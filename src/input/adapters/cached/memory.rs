@@ -24,7 +24,7 @@ impl Memory {
     /// Wrap an existing [`Input`] with an in-memory store with the same codec and framing.
     ///
     /// [`Input`]: Input
-    pub async fn new(source: Input) -> Result<Self, Error> {
+    pub async fn new(source: Input<'_>) -> Result<Self, Error> {
         Self::with_config(source, None).await
     }
 
@@ -34,7 +34,7 @@ impl Memory {
     /// needless allocations and copies.
     ///
     /// [`Input`]: Input
-    pub async fn with_config(source: Input, config: Option<Config>) -> Result<Self, Error> {
+    pub async fn with_config(source: Input<'_>, config: Option<Config>) -> Result<Self, Error> {
         let input = match source {
             Input::Lazy(mut r) => {
                 let created = if r.should_create_async() {
@@ -103,8 +103,8 @@ impl MediaSource for Memory {
     }
 }
 
-impl From<Memory> for Input {
-    fn from(val: Memory) -> Input {
+impl From<Memory> for Input<'_> {
+    fn from(val: Memory) -> Self {
         let input = Box::new(val);
         Input::Live(LiveInput::Raw(AudioStream { input }), None)
     }

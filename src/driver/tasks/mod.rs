@@ -25,7 +25,7 @@ use message::*;
 use tokio::{spawn, time::sleep as tsleep};
 use tracing::{debug, instrument, trace};
 
-pub(crate) fn start(config: Config, rx: Receiver<CoreMessage>, tx: Sender<CoreMessage>) {
+pub(crate) fn start(config: Config<'_>, rx: Receiver<CoreMessage<'_>>, tx: Sender<CoreMessage<'_>>) {
     spawn(async move {
         trace!("Driver started.");
         runner(config, rx, tx).await;
@@ -33,7 +33,7 @@ pub(crate) fn start(config: Config, rx: Receiver<CoreMessage>, tx: Sender<CoreMe
     });
 }
 
-fn start_internals(core: Sender<CoreMessage>, config: &Config) -> Interconnect {
+fn start_internals<'s>(core: Sender<CoreMessage<'_>>, config: &Config<'_>) -> Interconnect<'s> {
     let (evt_tx, evt_rx) = flume::unbounded();
     let (mix_tx, mix_rx) = flume::unbounded();
 
@@ -54,9 +54,9 @@ fn start_internals(core: Sender<CoreMessage>, config: &Config) -> Interconnect {
 }
 
 #[instrument(skip(rx, tx))]
-async fn runner(mut config: Config, rx: Receiver<CoreMessage>, tx: Sender<CoreMessage>) {
-    let mut next_config: Option<Config> = None;
-    let mut connection: Option<Connection> = None;
+async fn runner(mut config: Config<'_>, rx: Receiver<CoreMessage<'_>>, tx: Sender<CoreMessage<'_>>) {
+    let mut next_config: Option<Config<'_>> = None;
+    let mut connection: Option<Connection<'_>> = None;
     let mut interconnect = start_internals(tx, &config);
     let mut retrying = None;
     let mut attempt_idx = 0;
@@ -256,12 +256,12 @@ impl ConnectionRetryData {
         }
     }
 
-    async fn attempt(
+    async fn attempt<'s>(
         mut self,
         attempt_slot: &mut Option<Self>,
-        interconnect: &Interconnect,
-        config: &Config,
-    ) -> Option<Connection> {
+        interconnect: &Interconnect<'_>,
+        config: &Config<'_>,
+    ) -> Option<Connection<'s>> {
         match Connection::new(self.info.clone(), interconnect, config, self.idx).await {
             Ok(connection) => {
                 match self.flavour {

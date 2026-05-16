@@ -78,7 +78,7 @@ pub use self::{
 pub use symphonia_core as core;
 
 use std::{error::Error, io::Cursor};
-use symphonia_core::{codecs::CodecRegistry, probe::Probe};
+use symphonia_core::{codecs::registry::CodecRegistry, formats::probe::Probe};
 use tokio::runtime::Handle as TokioHandle;
 
 /// An audio source, which can be live or lazily initialised.
@@ -170,7 +170,7 @@ use tokio::runtime::Handle as TokioHandle;
 /// ```
 ///
 /// [`Track`]: crate::tracks::Track
-pub enum Input {
+pub enum Input<'s> {
     /// A byte source which is not yet initialised.
     ///
     /// When a parent track is either played or explicitly readied, the inner [`Compose`]
@@ -185,7 +185,7 @@ pub enum Input {
     /// as well as any symphonia-specific format data and/or hints.
     Live(
         /// The byte source, plus symphonia-specific data.
-        LiveInput,
+        LiveInput<'s>,
         /// The struct used to initialise this source, if available.
         ///
         /// This is used to recreate the stream when a source does not support
@@ -194,7 +194,7 @@ pub enum Input {
     ),
 }
 
-impl Input {
+impl Input<'_> {
     /// Requests auxiliary metadata which can be accessed without parsing the file.
     ///
     /// This method will never be called by songbird but allows, for instance, access to metadata
@@ -338,7 +338,7 @@ impl Input {
     /// Returns a reference to the live input, if it has been created via
     /// [`Self::make_live`] or [`Self::make_live_async`].
     #[must_use]
-    pub fn live(&self) -> Option<&LiveInput> {
+    pub fn live(&self) -> Option<&LiveInput<'_>> {
         if let Self::Live(input, _) = self {
             Some(input)
         } else {
@@ -348,7 +348,7 @@ impl Input {
 
     /// Returns a mutable reference to the live input, if it been created via
     /// [`Self::make_live`] or [`Self::make_live_async`].
-    pub fn live_mut(&mut self) -> Option<&mut LiveInput> {
+    pub fn live_mut(&mut self) -> Option<&mut LiveInput<'_>> {
         if let Self::Live(ref mut input, _) = self {
             Some(input)
         } else {
@@ -370,7 +370,7 @@ impl Input {
     }
 }
 
-impl<T: AsRef<[u8]> + Send + Sync + 'static> From<T> for Input {
+impl<T: AsRef<[u8]> + Send + Sync + 'static> From<T> for Input<'_> {
     fn from(val: T) -> Self {
         let raw_src = LiveInput::Raw(AudioStream {
             input: Box::new(Cursor::new(val)),

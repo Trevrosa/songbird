@@ -71,8 +71,8 @@ impl From<JsonError> for Error {
     }
 }
 
-impl From<SendError<WsMessage>> for Error {
-    fn from(_e: SendError<WsMessage>) -> Error {
+impl From<SendError<WsMessage<'_>>> for Error {
+    fn from(_e: SendError<WsMessage<'_>>) -> Error {
         Error::InterconnectFailure(Recipient::AuxNetwork)
     }
 }
@@ -83,8 +83,8 @@ impl From<SendError<EventMessage>> for Error {
     }
 }
 
-impl From<SendError<MixerMessage>> for Error {
-    fn from(_e: SendError<MixerMessage>) -> Error {
+impl From<SendError<MixerMessage<'_>>> for Error {
+    fn from(_e: SendError<MixerMessage<'_>>) -> Error {
         Error::InterconnectFailure(Recipient::Mixer)
     }
 }

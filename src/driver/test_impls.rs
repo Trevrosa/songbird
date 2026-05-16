@@ -35,13 +35,13 @@ pub type Listeners = (
 );
 
 #[cfg(not(feature = "receive"))]
-pub type Listeners = (Receiver<CoreMessage>, Receiver<EventMessage>);
+pub type Listeners<'s> = (Receiver<CoreMessage<'s>>, Receiver<EventMessage>);
 
-pub type DummyMixer = (Mixer, Listeners);
+pub type DummyMixer<'s> = (Mixer<'s>, Listeners<'s>);
 
-impl Mixer {
+impl<'s> Mixer<'s> {
     #[must_use]
-    pub fn mock(handle: Handle, softclip: bool) -> DummyMixer {
+    pub fn mock(handle: Handle, softclip: bool) -> DummyMixer<'s> {
         let (mix_tx, mix_rx) = flume::unbounded();
         let (core_tx, core_rx) = flume::unbounded();
         let (event_tx, event_rx) = flume::unbounded();
@@ -110,13 +110,13 @@ impl Mixer {
     }
 
     #[must_use]
-    pub fn test_with_float(num_tracks: usize, handle: Handle, softclip: bool) -> DummyMixer {
+    pub fn test_with_float(num_tracks: usize, handle: Handle, softclip: bool) -> DummyMixer<'s> {
         let mut out = Self::mock(handle, softclip);
 
         let floats = test_utils::make_sine(10 * STEREO_FRAME_SIZE, true);
 
         for _ in 0..num_tracks {
-            let input: Input = RawAdapter::new(Cursor::new(floats.clone()), 48_000, 2).into();
+            let input: Input<'_> = RawAdapter::new(Cursor::new(floats.clone()), 48_000, 2).into();
             let promoted = match input {
                 Input::Live(l, _) => l.promote(get_codec_registry(), get_probe()),
                 Input::Lazy(_) => panic!("Failed to create a guaranteed source."),
@@ -129,12 +129,12 @@ impl Mixer {
     }
 
     #[must_use]
-    pub fn test_with_float_unending(handle: Handle, softclip: bool) -> (DummyMixer, TrackHandle) {
+    pub fn test_with_float_unending(handle: Handle, softclip: bool) -> (DummyMixer<'s>, TrackHandle) {
         let mut out = Self::mock(handle, softclip);
 
         let floats = test_utils::make_sine(10 * STEREO_FRAME_SIZE, true);
 
-        let input: Input = RawAdapter::new(Cursor::new(floats.clone()), 48_000, 2).into();
+        let input: Input<'_> = RawAdapter::new(Cursor::new(floats.clone()), 48_000, 2).into();
         let promoted = match input {
             Input::Live(l, _) => l.promote(get_codec_registry(), get_probe()),
             Input::Lazy(_) => panic!("Failed to create a guaranteed source."),
@@ -149,12 +149,12 @@ impl Mixer {
     }
 
     #[must_use]
-    pub fn test_with_float_drop(num_tracks: usize, handle: Handle) -> DummyMixer {
+    pub fn test_with_float_drop(num_tracks: usize, handle: Handle) -> DummyMixer<'s> {
         let mut out = Self::mock(handle, true);
 
         for i in 0..num_tracks {
             let floats = test_utils::make_sine((i / 5) * STEREO_FRAME_SIZE, true);
-            let input: Input = RawAdapter::new(Cursor::new(floats.clone()), 48_000, 2).into();
+            let input: Input<'_> = RawAdapter::new(Cursor::new(floats.clone()), 48_000, 2).into();
             let promoted = match input {
                 Input::Live(l, _) => l.promote(get_codec_registry(), get_probe()),
                 Input::Lazy(_) => panic!("Failed to create a guaranteed source."),
@@ -167,14 +167,14 @@ impl Mixer {
     }
 
     #[must_use]
-    pub fn test_with_opus(handle: &Handle) -> DummyMixer {
+    pub fn test_with_opus(handle: &Handle) -> DummyMixer<'_> {
         // should add a single opus-based track.
         // make this fully loaded to prevent any perf cost there.
         let mut out = Self::mock(handle.clone(), false);
 
         let floats = test_utils::make_sine(6 * STEREO_FRAME_SIZE, true);
 
-        let input: Input = RawAdapter::new(Cursor::new(floats), 48_000, 2).into();
+        let input: Input<'_> = RawAdapter::new(Cursor::new(floats), 48_000, 2).into();
 
         let mut src = handle.block_on(async move {
             Compressed::new(input, Bitrate::Bits(128_000))
@@ -196,16 +196,16 @@ impl Mixer {
     }
 }
 
-pub struct MockScheduler {
-    pub core: Live,
+pub struct MockScheduler <'s>{
+    pub core: Live<'s>,
     pub stats: Arc<StatBlock>,
     pub local: Arc<LiveStatBlock>,
-    pub rx: Receiver<SchedulerMessage>,
-    pub tx: Sender<(TaskId, ParkedMixer)>,
+    pub rx: Receiver<SchedulerMessage<'s>>,
+    pub tx: Sender<(TaskId, ParkedMixer<'s>)>,
     pub id: TaskId,
 }
 
-impl MockScheduler {
+impl MockScheduler<'_> {
     #[must_use]
     pub fn new(mode: Option<Mode>) -> Self {
         let stats = Arc::new(StatBlock::default());
@@ -237,13 +237,13 @@ impl MockScheduler {
         }
     }
 
-    pub fn add_mixer_direct(&mut self, m: Mixer) {
+    pub fn add_mixer_direct(&mut self, m: Mixer<'_>) {
         let id = self.id.incr();
         self.core.add_task_direct(m, id);
     }
 
     #[must_use]
-    pub fn from_mixers(mode: Option<Mode>, mixers: Vec<DummyMixer>) -> (Self, Vec<Listeners>) {
+    pub fn from_mixers(mode: Option<Mode>, mixers: Vec<DummyMixer<'_>>) -> (Self, Vec<Listeners<'_>>) {
         let mut out = Self::new(mode);
         let mut listeners = vec![];
         for (mixer, listener) in mixers {

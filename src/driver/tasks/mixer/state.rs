@@ -8,13 +8,13 @@ use flume::Receiver;
 use rubato::FftFixedOut;
 use std::time::Instant;
 
-pub enum InputState {
-    NotReady(Input),
+pub enum InputState<'s> {
+    NotReady(Input<'s>),
     Preparing(PreparingInfo),
     Ready(Parsed, Option<Box<dyn Compose>>),
 }
 
-impl InputState {
+impl InputState<'_> {
     pub fn metadata(&mut self) -> Option<Metadata<'_>> {
         if let Self::Ready(parsed, _) = self {
             Some(parsed.into())
@@ -33,8 +33,8 @@ impl InputState {
     }
 }
 
-impl From<Input> for InputState {
-    fn from(val: Input) -> Self {
+impl From<Input<'_>> for InputState<'_> {
+    fn from(val: Input<'_>) -> Self {
         match val {
             a @ Input::Lazy(_) => Self::NotReady(a),
             Input::Live(live, rec) => match live {

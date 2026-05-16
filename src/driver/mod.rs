@@ -75,10 +75,10 @@ use tracing::instrument;
 /// When compiled with the `"builtin-queue"` feature, each driver includes a track queue
 /// as a convenience to prevent the additional overhead of per-guild state management.
 #[derive(Clone, Debug)]
-pub struct Driver {
-    config: Config,
+pub struct Driver<'s> {
+    config: Config<'s>,
     self_mute: bool,
-    sender: Sender<CoreMessage>,
+    sender: Sender<CoreMessage<'s>>,
     // Making this an Option is an abhorrent hack to coerce the borrow checker
     // into letting us have an &TrackQueue at the same time as an &mut Driver.
     // This is probably preferable to cloning the driver: Arc<...> should be nonzero
@@ -88,13 +88,13 @@ pub struct Driver {
     queue: Option<TrackQueue>,
 }
 
-impl Driver {
+impl Driver<'_> {
     /// Creates a new voice driver.
     ///
     /// This will create the core voice tasks in the background.
     #[inline]
     #[must_use]
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config<'_>) -> Self {
         let sender = Self::start_inner(config.clone());
 
         Driver {
@@ -106,7 +106,7 @@ impl Driver {
         }
     }
 
-    fn start_inner(config: Config) -> Sender<CoreMessage> {
+    fn start_inner<'s>(config: Config<'_>) -> Sender<CoreMessage<'s>> {
         let (tx, rx) = flume::unbounded();
 
         tasks::start(config, rx, tx.clone());
@@ -169,7 +169,7 @@ impl Driver {
 
     /// Plays audio from an input, returning a handle for further control.
     #[instrument(skip(self, input))]
-    pub fn play_input(&mut self, input: Input) -> TrackHandle {
+    pub fn play_input(&mut self, input: Input<'_>) -> TrackHandle {
         self.play(input.into())
     }
 
@@ -178,7 +178,7 @@ impl Driver {
     /// Unlike [`Self::play_input`], this stops all other inputs attached
     /// to the channel.
     #[instrument(skip(self, input))]
-    pub fn play_only_input(&mut self, input: Input) -> TrackHandle {
+    pub fn play_only_input(&mut self, input: Input<'_>) -> TrackHandle {
         self.play_only(input.into())
     }
 
@@ -188,7 +188,7 @@ impl Driver {
     /// that this allows for direct manipulation of the [`Track`] object
     /// before it is passed over to the voice and mixing contexts.
     #[instrument(skip(self, track))]
-    pub fn play(&mut self, track: Track) -> TrackHandle {
+    pub fn play(&mut self, track: Track<'_>) -> TrackHandle {
         let (handle, ctx) = track.into_context();
         self.send(CoreMessage::AddTrack(Box::new(ctx)));
 
@@ -201,7 +201,7 @@ impl Driver {
     /// channel. Like [`Self::play`], however, this allows for direct manipulation of the
     /// [`Track`] object before it is passed over to the voice and mixing contexts.
     #[instrument(skip(self, track))]
-    pub fn play_only(&mut self, track: Track) -> TrackHandle {
+    pub fn play_only(&mut self, track: Track<'_>) -> TrackHandle {
         let (handle, ctx) = track.into_context();
         self.send(CoreMessage::SetTrack(Some(Box::new(ctx))));
 
@@ -228,14 +228,14 @@ impl Driver {
 
     /// Sets the configuration for this driver (and parent `Call`, if applicable).
     #[instrument(skip(self))]
-    pub fn set_config(&mut self, config: Config) {
+    pub fn set_config(&mut self, config: Config<'_>) {
         self.config = config.clone();
         self.send(CoreMessage::SetConfig(config));
     }
 
     /// Returns a view of this driver's configuration.
     #[instrument(skip(self))]
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &Config<'_> {
         &self.config
     }
 
@@ -264,7 +264,7 @@ impl Driver {
     }
 
     /// Sends a message to the inner tasks, restarting it if necessary.
-    fn send(&mut self, status: CoreMessage) {
+    fn send(&mut self, status: CoreMessage<'_>) {
         // Restart thread if it errored.
         if let Err(SendError(status)) = self.sender.send(status) {
             self.restart_inner();
@@ -323,13 +323,13 @@ impl Driver {
     }
 }
 
-impl Default for Driver {
+impl Default for Driver<'_> {
     fn default() -> Self {
         Self::new(Config::default())
     }
 }
 
-impl Drop for Driver {
+impl Drop for Driver<'_> {
     /// Leaves the current connected voice channel, if connected to one, and
     /// forgets all configurations relevant to this Handler.
     fn drop(&mut self) {

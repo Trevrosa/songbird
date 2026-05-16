@@ -42,8 +42,8 @@ use tokio::{
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tracing::{debug, info, instrument, trace, warn};
 
-pub(crate) struct AuxNetwork {
-    rx: Receiver<WsMessage>,
+pub(crate) struct AuxNetwork<'s> {
+    rx: Receiver<WsMessage<'s>>,
     ws_client: WsStream,
     dont_send: bool,
 
@@ -65,9 +65,9 @@ pub(crate) struct AuxNetwork {
     ssrc_signalling: Arc<SsrcTracker>,
 }
 
-impl AuxNetwork {
+impl AuxNetwork<'_> {
     pub(crate) fn new(
-        evt_rx: Receiver<WsMessage>,
+        evt_rx: Receiver<WsMessage<'_>>,
         ws_client: WsStream,
         ssrc: u32,
         heartbeat_interval: f64,
@@ -106,7 +106,7 @@ impl AuxNetwork {
     }
 
     #[instrument(skip(self))]
-    async fn run(&mut self, interconnect: &mut Interconnect) {
+    async fn run(&mut self, interconnect: &mut Interconnect<'_>) {
         let mut next_heartbeat = Instant::now() + self.heartbeat_interval;
 
         loop {
@@ -252,7 +252,7 @@ impl AuxNetwork {
 
     async fn process_ws(
         &mut self,
-        interconnect: &Interconnect,
+        interconnect: &Interconnect<'_>,
         value: GatewayEvent,
     ) -> Result<(), WsError> {
         match value {
@@ -521,7 +521,7 @@ impl AuxNetwork {
 }
 
 #[instrument(skip(interconnect, aux))]
-pub(crate) async fn runner(mut interconnect: Interconnect, mut aux: AuxNetwork) {
+pub(crate) async fn runner(mut interconnect: Interconnect<'_>, mut aux: AuxNetwork<'_>) {
     trace!("WS thread started.");
     aux.run(&mut interconnect).await;
     trace!("WS thread finished.");

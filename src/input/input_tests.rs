@@ -8,17 +8,17 @@ use crate::{
 
 use std::time::Duration;
 
-pub async fn track_plays_passthrough<T, F>(make_track: F)
+pub async fn track_plays_passthrough<'s, T, F>(make_track: F)
 where
-    T: Into<Track>,
+    T: Into<Track<'s>>,
     F: FnOnce() -> T,
 {
     track_plays_base(make_track, true, None).await;
 }
 
-pub async fn track_plays_passthrough_when_is_only_active<T, F>(make_track: F)
+pub async fn track_plays_passthrough_when_is_only_active<'s, T, F>(make_track: F)
 where
-    T: Into<Track>,
+    T: Into<Track<'s>>,
     F: FnOnce() -> T,
 {
     track_plays_base(
@@ -29,20 +29,20 @@ where
     .await;
 }
 
-pub async fn track_plays_mixed<T, F>(make_track: F)
+pub async fn track_plays_mixed<'s, T, F>(make_track: F)
 where
-    T: Into<Track>,
+    T: Into<Track<'s>>,
     F: FnOnce() -> T,
 {
     track_plays_base(make_track, false, None).await;
 }
 
-pub async fn track_plays_base<T, F>(
+pub async fn track_plays_base<'s, T, F>(
     make_track: F,
     passthrough: bool,
     dummy_track: Option<&'static [u8]>,
 ) where
-    T: Into<Track>,
+    T: Into<Track<'s>>,
     F: FnOnce() -> T,
 {
     let (t_handle, config) = Config::test_cfg(true);
@@ -73,9 +73,9 @@ pub async fn track_plays_base<T, F>(
     }
 }
 
-pub async fn forward_seek_correct<T, F>(make_track: F)
+pub async fn forward_seek_correct<'s, T, F>(make_track: F)
 where
-    T: Into<Track>,
+    T: Into<Track<'s>>,
     F: FnOnce() -> T,
 {
     let (t_handle, config) = Config::test_cfg(true);
@@ -108,9 +108,9 @@ where
     );
 }
 
-pub async fn backward_seek_correct<T, F>(make_track: F)
+pub async fn backward_seek_correct<'s, T, F>(make_track: F)
 where
-    T: Into<Track>,
+    T: Into<Track<'s>>,
     F: FnOnce() -> T,
 {
     let (t_handle, config) = Config::test_cfg(true);

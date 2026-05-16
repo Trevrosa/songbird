@@ -4,11 +4,7 @@ use crate::FloatDuration;
 #[cfg(feature = "driver")]
 use crate::{
     driver::{
-        get_default_scheduler,
-        retry::Retry,
-        tasks::disposal::DisposalThread,
-        CryptoMode,
-        MixMode,
+        get_default_scheduler, retry::Retry, tasks::disposal::DisposalThread, CryptoMode, MixMode,
         Scheduler,
     },
     input::codecs::*,
@@ -20,7 +16,7 @@ use crate::driver::test_config::*;
 use crate::driver::SchedulerConfig;
 
 #[cfg(feature = "driver")]
-use symphonia::core::{codecs::CodecRegistry, probe::Probe};
+use symphonia::core::{codecs::registry::CodecRegistry, formats::probe::Probe};
 
 use derivative::Derivative;
 #[cfg(all(feature = "driver", feature = "receive"))]
@@ -31,7 +27,7 @@ use std::time::Duration;
 #[derive(Clone, Derivative)]
 #[derivative(Debug)]
 #[non_exhaustive]
-pub struct Config {
+pub struct Config<'s> {
     #[cfg(feature = "driver")]
     /// Selected tagging mode for voice packet encryption.
     ///
@@ -182,7 +178,7 @@ pub struct Config {
     /// Note: When using [`Songbird`] this is overwritten automatically by its disposal thread.
     ///
     /// [`Songbird`]: crate::Songbird
-    pub disposer: Option<DisposalThread>,
+    pub disposer: Option<DisposalThread<'s>>,
 
     #[cfg(feature = "driver")]
     /// The scheduler is responsible for mapping idle and active [`Driver`] instances
@@ -191,7 +187,7 @@ pub struct Config {
     /// If set to None, then songbird will use [`get_default_scheduler`].
     ///
     /// [`Driver`]: crate::Driver
-    pub scheduler: Option<Scheduler>,
+    pub scheduler: Option<Scheduler<'s>>,
 
     // Test only attributes
     #[cfg(feature = "driver")]
@@ -204,7 +200,7 @@ pub struct Config {
     pub(crate) override_connection: Option<OutputMode>,
 }
 
-impl Default for Config {
+impl Default for Config<'_> {
     fn default() -> Self {
         Self {
             #[cfg(feature = "driver")]
@@ -248,7 +244,7 @@ impl Default for Config {
 }
 
 #[cfg(feature = "driver")]
-impl Config {
+impl Config<'_> {
     /// Sets this `Config`'s chosen cryptographic tagging scheme.
     #[must_use]
     pub fn crypto_mode(mut self, crypto_mode: CryptoMode) -> Self {
@@ -339,21 +335,21 @@ impl Config {
 
     /// Sets this `Config`'s channel for sending disposal messages.
     #[must_use]
-    pub fn disposer(mut self, disposer: DisposalThread) -> Self {
+    pub fn disposer(mut self, disposer: DisposalThread<'_>) -> Self {
         self.disposer = Some(disposer);
         self
     }
 
     /// Sets this `Config`'s mixer scheduler.
     #[must_use]
-    pub fn scheduler(mut self, scheduler: Scheduler) -> Self {
+    pub fn scheduler(mut self, scheduler: Scheduler<'_>) -> Self {
         self.scheduler = Some(scheduler);
         self
     }
 
     /// Returns a lightweight reference to the audio scheduler this `Config` will use.
     #[must_use]
-    pub fn get_scheduler(&self) -> Scheduler {
+    pub fn get_scheduler(&self) -> Scheduler<'_> {
         self.scheduler
             .as_ref()
             .unwrap_or(get_default_scheduler())
@@ -371,7 +367,7 @@ impl Config {
     }
 
     /// This is used to prevent changes which would invalidate the current session.
-    pub(crate) fn make_safe(&mut self, previous: &Config, connected: bool) {
+    pub(crate) fn make_safe(&mut self, previous: &Config<'_>, connected: bool) {
         if connected {
             self.crypto_mode = previous.crypto_mode;
         }
@@ -388,7 +384,7 @@ impl Config {
 // Test only attributes
 #[cfg(all(test, feature = "driver"))]
 #[allow(missing_docs)]
-impl Config {
+impl Config<'_> {
     #[must_use]
     pub fn tick_style(mut self, tick_style: TickStyle) -> Self {
         self.tick_style = tick_style;
@@ -403,7 +399,7 @@ impl Config {
     }
 
     #[must_use]
-    pub fn test_cfg(raw_output: bool) -> (DriverTestHandle, Config) {
+    pub fn test_cfg<'s>(raw_output: bool) -> (DriverTestHandle, Config<'s>) {
         let (tick_tx, tick_rx) = flume::unbounded();
 
         let (conn, rx) = if raw_output {
@@ -434,7 +430,7 @@ impl Config {
 }
 
 #[cfg(feature = "gateway")]
-impl Config {
+impl Config<'_> {
     /// Sets this `Config`'s timeout for joining a voice channel.
     #[must_use]
     pub fn gateway_timeout(mut self, gateway_timeout: Option<Duration>) -> Self {

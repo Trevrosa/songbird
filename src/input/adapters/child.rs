@@ -47,7 +47,7 @@ impl From<Vec<Child>> for ChildContainer {
     }
 }
 
-impl From<ChildContainer> for Input {
+impl From<ChildContainer> for Input<'_> {
     fn from(val: ChildContainer) -> Self {
         let audio_stream = AudioStream {
             input: Box::new(ReadOnlySource::new(val)) as Box<dyn MediaSource>,

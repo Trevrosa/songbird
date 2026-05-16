@@ -3,9 +3,9 @@
 use super::Interconnect;
 use crate::{model::Event as GatewayEvent, ws::WsStream};
 
-pub enum WsMessage {
+pub enum WsMessage<'s> {
     Ws(Box<WsStream>),
-    ReplaceInterconnect(Interconnect),
+    ReplaceInterconnect(Interconnect<'s>),
     SetKeepalive(f64),
     Speaking(bool),
     Deliver(GatewayEvent),

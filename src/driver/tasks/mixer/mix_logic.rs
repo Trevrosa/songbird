@@ -1,3 +1,5 @@
+use symphonia_core::{audio::{GenericAudioBufferRef, conv::IntoSample, sample::Sample}, codecs::audio::well_known};
+
 use super::*;
 
 /// Mix a track's audio stream into either the shared mixing buffer, or directly into the output
@@ -59,7 +61,7 @@ pub fn mix_symph_indiv(
         // fetch a packet: either in progress, passthrough (early exit), or
         let source_packet = if local_state.inner_pos != 0 {
             Some(input.decoder.last_decoded())
-        } else if let Ok(pkt) = input.format.next_packet() {
+        } else if let Ok(Some(pkt)) = input.format.next_packet() {
             if pkt.track_id() != input.track_id {
                 continue;
             }
@@ -67,7 +69,8 @@ pub fn mix_symph_indiv(
             let buf = pkt.buf();
 
             // Opus packet passthrough special case.
-            if codec_type == CODEC_TYPE_OPUS && local_state.passthrough != Passthrough::Block {
+            // FIXME: same here, is it mp2 or opus
+            if codec_type == well_known::CODEC_ID_MP2 && local_state.passthrough != Passthrough::Block {
                 if let Some(slot) = opus_slot.as_mut() {
                     let sample_ct = if buf.is_empty() || buf.len() > i32::MAX as usize {
                         None
@@ -145,7 +148,7 @@ pub fn mix_symph_indiv(
 
         let source_packet = source_packet.unwrap();
 
-        let in_rate = source_packet.spec().rate;
+        let in_rate = source_packet.spec().rate();
         let pkt_frames = source_packet.frames();
 
         if pkt_frames == 0 {
@@ -168,7 +171,7 @@ pub fn mix_symph_indiv(
             local_state.inner_pos %= pkt_frames;
         } else {
             // NOTE: this should NEVER change in one stream.
-            let chan_c = source_packet.spec().channels.count();
+            let chan_c = source_packet.spec().channels().count();
             let (_, resampler, rs_out_buf) = local_state.resampler.get_or_insert_with(|| {
                 // TODO: integ. error handling here.
                 let resampler = FftFixedOut::new(
@@ -190,14 +193,14 @@ pub fn mix_symph_indiv(
             let available_frames = pkt_frames - inner_pos;
 
             let force_copy = resample_in_progress || needed_in_frames > available_frames;
-            if (!force_copy) && matches!(source_packet, AudioBufferRef::F32(_)) {
+            if (!force_copy) && matches!(source_packet, GenericAudioBufferRef::F32(_)) {
                 // This is the only case where we can pull off a straight resample...
                 // I would really like if this could be a slice of slices,
                 // but the technology just isn't there yet. And I don't feel like
                 // writing unsafe transformations to do so.
 
                 // NOTE: if let needed as if-let && {bool} is nightly only.
-                if let AudioBufferRef::F32(s_pkt) = source_packet {
+                if let GenericAudioBufferRef::F32(s_pkt) = source_packet {
                     let refs: Vec<&[f32]> = s_pkt
                         .planes()
                         .planes()
@@ -261,23 +264,23 @@ pub fn mix_symph_indiv(
 
 #[inline]
 fn mix_over_ref(
-    source: &AudioBufferRef<'_>,
+    source: &GenericAudioBufferRef<'_>,
     target: &mut AudioBuffer<f32>,
     source_pos: usize,
     dest_pos: usize,
     volume: f32,
 ) -> usize {
     match source {
-        AudioBufferRef::U8(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::U16(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::U24(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::U32(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::S8(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::S16(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::S24(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::S32(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::F32(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
-        AudioBufferRef::F64(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::U8(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::U16(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::U24(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::U32(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::S8(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::S16(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::S24(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::S32(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::F32(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
+        GenericAudioBufferRef::F64(v) => mix_symph_buffer(v, target, source_pos, dest_pos, volume),
     }
 }
 
@@ -290,7 +293,7 @@ fn mix_symph_buffer<S>(
     volume: f32,
 ) -> usize
 where
-    S: Sample + IntoSample<f32>,
+    S: Sample + IntoSample<f32>
 {
     // mix in source_packet[inner_pos..] til end of EITHER buffer.
     let src_usable = source.frames() - source_pos;
@@ -298,9 +301,9 @@ where
 
     let mix_ct = src_usable.min(tgt_usable);
 
-    let target_chans = target.spec().channels.count();
+    let target_chans = target.spec().channels().count();
     let target_mono = target_chans == 1;
-    let source_chans = source.spec().channels.count();
+    let source_chans = source.spec().channels().count();
     let source_mono = source_chans == 1;
 
     let source_planes = source.planes();
@@ -358,7 +361,7 @@ fn mix_resampled(
 ) -> usize {
     let mix_ct = source[0].len();
 
-    let target_chans = target.spec().channels.count();
+    let target_chans = target.spec().channels().count();
     let target_mono = target_chans == 1;
     let source_chans = source.len();
     let source_mono = source_chans == 1;
@@ -399,7 +402,7 @@ fn mix_resampled(
 
 #[inline]
 pub(crate) fn copy_into_resampler(
-    source: &AudioBufferRef<'_>,
+    source: &GenericAudioBufferRef<'_>,
     target: &mut AudioBuffer<f32>,
     source_pos: usize,
     dest_pos: usize,

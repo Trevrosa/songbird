@@ -16,20 +16,20 @@ use super::*;
 
 /// The send-half of a worker thread, with bookkeeping mechanisms to help
 /// the idle task schedule incoming tasks.
-pub struct Worker {
+pub struct Worker<'s> {
     id: WorkerId,
     stats: Arc<LiveStatBlock>,
     config: Config,
-    tx: Sender<(TaskId, ParkedMixer)>,
+    tx: Sender<(TaskId, ParkedMixer<'s>)>,
     known_empty_since: Option<TokInstant>,
 }
 
 #[allow(missing_docs)]
-impl Worker {
+impl Worker<'_> {
     pub fn new(
         id: WorkerId,
         config: Config,
-        sched_tx: Sender<SchedulerMessage>,
+        sched_tx: Sender<SchedulerMessage<'_>>,
         global_stats: Arc<StatBlock>,
     ) -> Self {
         let stats = Arc::new(LiveStatBlock::default());
@@ -84,7 +84,7 @@ impl Worker {
     /// for the given task.
     #[inline]
     #[must_use]
-    pub fn can_schedule(&self, task: &ParkedMixer, avoid: Option<WorkerId>) -> bool {
+    pub fn can_schedule(&self, task: &ParkedMixer<'_>, avoid: Option<WorkerId>) -> bool {
         avoid.is_none_or(|id| !self.has_id(id)) && self.stats.has_room(&self.config.strategy, task)
     }
 
@@ -99,8 +99,8 @@ impl Worker {
     pub fn schedule_mixer(
         &mut self,
         id: TaskId,
-        task: ParkedMixer,
-    ) -> Result<(), SendError<(TaskId, ParkedMixer)>> {
+        task: ParkedMixer<'_>,
+    ) -> Result<(), SendError<(TaskId, ParkedMixer<'_>)>> {
         self.mark_busy();
         self.stats.add_mixer();
         self.tx.send((id, task))
@@ -120,11 +120,11 @@ const MEMORY_CULL_TIMER: Duration = Duration::from_secs(10);
 ///
 /// `Mixer`s remain `Box`ed due to large move costs, and unboxing them appeared to have
 /// a 5--10% perf cost from benchmarks.
-pub struct Live {
+pub struct Live<'s> {
     packets: Vec<Box<[u8]>>,
     packet_lens: Vec<usize>,
     #[allow(clippy::vec_box)]
-    tasks: Vec<Box<Mixer>>,
+    tasks: Vec<Box<Mixer<'s>>>,
     ids: Vec<TaskId>,
     to_cull: Vec<bool>,
 
@@ -135,21 +135,21 @@ pub struct Live {
     config: Config,
     stats: Arc<LiveStatBlock>,
     global_stats: Arc<StatBlock>,
-    rx: Receiver<(TaskId, ParkedMixer)>,
-    tx: Sender<SchedulerMessage>,
+    rx: Receiver<(TaskId, ParkedMixer<'s>)>,
+    tx: Sender<SchedulerMessage<'s>>,
 
     excess_buffer_cull_time: Option<Instant>,
 }
 
 #[allow(missing_docs)]
-impl Live {
+impl Live<'_> {
     pub fn new(
         id: WorkerId,
         config: Config,
         global_stats: Arc<StatBlock>,
         stats: Arc<LiveStatBlock>,
-        rx: Receiver<(TaskId, ParkedMixer)>,
-        tx: Sender<SchedulerMessage>,
+        rx: Receiver<(TaskId, ParkedMixer<'_>)>,
+        tx: Sender<SchedulerMessage<'_>>,
     ) -> Self {
         let to_prealloc = config.strategy.prealloc_size();
 
@@ -492,7 +492,7 @@ impl Live {
     }
 
     #[inline]
-    fn add_task(&mut self, task: ParkedMixer, id: TaskId, activation_time: Instant) {
+    fn add_task(&mut self, task: ParkedMixer<'_>, id: TaskId, activation_time: Instant) {
         let idx = self.ids.len();
 
         let elapsed = task.park_time - activation_time;
@@ -544,7 +544,7 @@ impl Live {
 
     #[cfg(any(test, feature = "internals"))]
     #[inline]
-    pub fn add_task_direct(&mut self, task: Mixer, id: TaskId) {
+    pub fn add_task_direct(&mut self, task: Mixer<'_>, id: TaskId) {
         let id_0 = id.get();
         self.add_task(
             ParkedMixer {
@@ -567,7 +567,7 @@ impl Live {
     /// on RTP packet headers. This is achieved by setting up a memcpy between
     /// buffer segments.
     #[inline]
-    pub fn remove_task(&mut self, idx: usize) -> Option<(TaskId, ParkedMixer)> {
+    pub fn remove_task(&mut self, idx: usize) -> Option<(TaskId, ParkedMixer<'_>)> {
         let end = self.tasks.len() - 1;
 
         let id = self.ids.swap_remove(idx);
@@ -679,7 +679,7 @@ fn advance_rtp_counters(packet: &mut [u8]) {
 /// in the event of error.
 #[inline]
 fn rebuild_if_err<T>(
-    mixer: &mut Box<Mixer>,
+    mixer: &mut Box<Mixer<'_>>,
     res: Result<T, DriverError>,
     cull_markers: &mut [bool],
     idx: usize,

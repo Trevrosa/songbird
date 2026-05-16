@@ -120,7 +120,7 @@ impl LiveStatBlock {
     }
 
     #[inline]
-    pub(crate) fn has_room(&self, strategy: &Mode, task: &ParkedMixer) -> bool {
+    pub(crate) fn has_room(&self, strategy: &Mode, task: &ParkedMixer<'_>) -> bool {
         let task_room = strategy
             .task_limit()
             .is_none_or(|limit| self.live_mixers() < limit as u64);

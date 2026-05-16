@@ -102,7 +102,7 @@ impl<A: MediaSource> MediaSource for RawAdapter<A> {
     }
 }
 
-impl<A: MediaSource + Send + Sync + 'static> From<RawAdapter<A>> for Input {
+impl<A: MediaSource + Send + Sync + 'static> From<RawAdapter<A>> for Input<'_> {
     fn from(val: RawAdapter<A>) -> Self {
         let live = LiveInput::Raw(AudioStream {
             input: Box::new(val),

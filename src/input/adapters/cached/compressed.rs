@@ -3,40 +3,28 @@ use crate::{
     constants::*,
     input::{
         codecs::{dca::*, get_codec_registry, get_probe},
-        AudioStream,
-        Input,
-        LiveInput,
+        AudioStream, Input, LiveInput,
     },
 };
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use opus2::{Application, Bitrate, Channels, Encoder as OpusEncoder, ErrorCode as OpusErrorCode};
 use std::{
     io::{
-        Cursor,
-        Error as IoError,
-        ErrorKind as IoErrorKind,
-        Read,
-        Result as IoResult,
-        Seek,
+        Cursor, Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Seek,
         SeekFrom,
     },
     mem,
     sync::atomic::{AtomicUsize, Ordering},
 };
 use streamcatcher::{
-    Config as ScConfig,
-    NeedsBytes,
-    Stateful,
-    Transform,
-    TransformPosition,
-    TxCatcher,
+    Config as ScConfig, NeedsBytes, Stateful, Transform, TransformPosition, TxCatcher,
 };
 use symphonia_core::{
     audio::Channels as SChannels,
-    codecs::CodecRegistry,
+    codecs::registry::CodecRegistry,
+    formats::probe::{Probe, ProbeMetadataData},
     io::MediaSource,
-    meta::{MetadataRevision, StandardTagKey, Value},
-    probe::{Probe, ProbedMetadata},
+    meta::{MetadataRevision, StandardTag},
 };
 use tracing::{debug, trace};
 
@@ -108,7 +96,7 @@ impl Compressed {
     /// Wrap an existing [`Input`] with an in-memory store, compressed using Opus.
     ///
     /// [`Input`]: Input
-    pub async fn new(source: Input, bitrate: Bitrate) -> Result<Self, CodecCacheError> {
+    pub async fn new(source: Input<'_>, bitrate: Bitrate) -> Result<Self, CodecCacheError> {
         Self::with_config(source, bitrate, None).await
     }
 
@@ -117,7 +105,7 @@ impl Compressed {
     ///
     /// [`Input`]: Input
     pub async fn with_config(
-        source: Input,
+        source: Input<'_>,
         bitrate: Bitrate,
         config: Option<Config>,
     ) -> Result<Self, CodecCacheError> {
@@ -159,7 +147,7 @@ impl Compressed {
         // }
 
         let track_info = parsed.decoder.codec_params();
-        let chan_count = track_info.channels.map_or(2, SChannels::count);
+        let chan_count = track_info.channels.as_ref().map_or(2, SChannels::count);
 
         let (channels, stereo) = if chan_count >= 2 {
             (Channels::Stereo, true)
@@ -217,7 +205,7 @@ impl Compressed {
 }
 
 fn create_metadata(
-    probe_metadata: &mut ProbedMetadata,
+    probe_metadata: &mut ProbeMetadataData,
     track_metadata: Option<&MetadataRevision>,
     opus: &mut OpusEncoder,
     channels: u8,
@@ -291,40 +279,33 @@ fn create_metadata(
 
 fn apply_meta_to_dca(info: &mut Info, origin: &mut Origin, src_meta: Option<&MetadataRevision>) {
     if let Some(meta) = src_meta {
-        for tag in meta.tags() {
-            match tag.std_key {
-                Some(StandardTagKey::Album) =>
-                    if let Value::String(s) = &tag.value {
-                        info.album = Some(s.clone());
-                    },
-                Some(StandardTagKey::Artist) =>
-                    if let Value::String(s) = &tag.value {
-                        info.artist = Some(s.clone());
-                    },
-                Some(StandardTagKey::Comment) =>
-                    if let Value::String(s) = &tag.value {
-                        info.comments = Some(s.clone());
-                    },
-                Some(StandardTagKey::Genre) =>
-                    if let Value::String(s) = &tag.value {
-                        info.genre = Some(s.clone());
-                    },
-                Some(StandardTagKey::TrackTitle) =>
-                    if let Value::String(s) = &tag.value {
-                        info.title = Some(s.clone());
-                    },
-                Some(StandardTagKey::Url | StandardTagKey::UrlSource) => {
-                    if let Value::String(s) = &tag.value {
-                        origin.url = Some(s.clone());
-                    }
+        for tag in meta.media.tags {
+            match tag.std {
+                Some(StandardTag::Album(s)) => {
+                    info.album = Some(s.into());
+                },
+                Some(StandardTag::Artist(s)) => {
+                    info.artist = Some(s.into());
+                },
+                Some(StandardTag::Comment(s)) => {
+                    info.comments = Some(s.into());
+                },
+                Some(StandardTag::Genre(s)) => {
+                    info.genre = Some(s.into());
+                },
+                Some(StandardTag::TrackTitle(s)) => {
+                    info.title = Some(s.into());
+                },
+                Some(StandardTag::Url(s) | StandardTag::UrlSource(s)) => {
+                    origin.url = Some(s.into());
                 },
                 _ => {},
             }
         }
 
-        for _visual in meta.visuals() {
+        // for _visual in meta.visuals() {
             // FIXME: will require MIME type inspection and Base64 conversion.
-        }
+        // }
     }
 }
 
@@ -518,9 +499,9 @@ impl MediaSource for Compressed {
     }
 }
 
-impl From<Compressed> for Input {
-    fn from(val: Compressed) -> Input {
-        let input = Box::new(val);
+impl From<Compressed> for Input<'_> {
+    fn from(value: Compressed) -> Self {
+        let input = Box::new(value);
         Input::Live(LiveInput::Raw(AudioStream { input }), None)
     }
 }

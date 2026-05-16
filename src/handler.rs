@@ -36,7 +36,7 @@ enum Return {
 ///
 /// [`Driver`]: struct@Driver
 #[derive(Clone, Debug)]
-pub struct Call {
+pub struct Call<'s> {
     #[cfg(not(feature = "driver"))]
     config: Config,
 
@@ -44,7 +44,7 @@ pub struct Call {
 
     #[cfg(feature = "driver")]
     /// The internal controller of the voice connection monitor thread.
-    driver: Driver,
+    driver: Driver<'s>,
 
     guild_id: GuildId,
     /// Whether the current handler is set to deafen voice connections.
@@ -63,7 +63,7 @@ pub struct Call {
     ws: Option<Shard>,
 }
 
-impl Call {
+impl Call<'_> {
     /// Creates a new Call, which will send out WebSocket messages via
     /// the given shard.
     #[inline]
@@ -79,7 +79,7 @@ impl Call {
     /// Creates a new Call, configuring the driver as specified.
     #[inline]
     #[instrument]
-    pub fn from_config<G, U>(guild_id: G, ws: Shard, user_id: U, config: Config) -> Self
+    pub fn from_config<G, U>(guild_id: G, ws: Shard, user_id: U, config: Config<'_>) -> Self
     where
         G: Into<GuildId> + Debug,
         U: Into<UserId> + Debug,
@@ -108,7 +108,7 @@ impl Call {
     /// Creates a new standalone Call from the given configuration file.
     #[inline]
     #[instrument]
-    pub fn standalone_from_config<G, U>(guild_id: G, user_id: U, config: Config) -> Self
+    pub fn standalone_from_config<G, U>(guild_id: G, user_id: U, config: Config<'_>) -> Self
     where
         G: Into<GuildId> + Debug,
         U: Into<UserId> + Debug,
@@ -116,7 +116,7 @@ impl Call {
         Self::new_raw_cfg(guild_id.into(), None, user_id.into(), config)
     }
 
-    fn new_raw_cfg(guild_id: GuildId, ws: Option<Shard>, user_id: UserId, config: Config) -> Self {
+    fn new_raw_cfg(guild_id: GuildId, ws: Option<Shard>, user_id: UserId, config: Config<'_>) -> Self {
         Call {
             #[cfg(not(feature = "driver"))]
             config,
@@ -474,8 +474,8 @@ impl Call {
 }
 
 #[cfg(feature = "driver")]
-impl Deref for Call {
-    type Target = Driver;
+impl<'s> Deref for Call<'s> {
+    type Target = Driver<'s>;
 
     fn deref(&self) -> &Self::Target {
         &self.driver
@@ -483,7 +483,7 @@ impl Deref for Call {
 }
 
 #[cfg(feature = "driver")]
-impl DerefMut for Call {
+impl<'s> DerefMut for Call<'s> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.driver
     }

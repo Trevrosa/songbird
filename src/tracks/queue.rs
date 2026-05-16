@@ -173,7 +173,7 @@ impl TrackQueue {
     /// the [`AuxMetadata`] can be successfully queried for a [`Duration`].
     ///
     /// [`AuxMetadata`]: crate::input::AuxMetadata
-    pub async fn add_source(&self, input: Input, driver: &mut Driver) -> TrackHandle {
+    pub async fn add_source(&self, input: Input<'_>, driver: &mut Driver<'_>) -> TrackHandle {
         self.add(input.into(), driver).await
     }
 
@@ -186,12 +186,12 @@ impl TrackQueue {
     /// the [`AuxMetadata`] can be successfully queried for a [`Duration`].
     ///
     /// [`AuxMetadata`]: crate::input::AuxMetadata
-    pub async fn add(&self, mut track: Track, driver: &mut Driver) -> TrackHandle {
+    pub async fn add(&self, mut track: Track<'_>, driver: &mut Driver<'_>) -> TrackHandle {
         let preload_time = Self::get_preload_time(&mut track).await;
         self.add_with_preload(track, driver, preload_time)
     }
 
-    pub(crate) async fn get_preload_time(track: &mut Track) -> Option<Duration> {
+    pub(crate) async fn get_preload_time(track: &mut Track<'_>) -> Option<Duration> {
         let meta = match track.input {
             Input::Lazy(ref mut rec) | Input::Live(_, Some(ref mut rec)) =>
                 rec.aux_metadata().await.ok(),
@@ -215,8 +215,8 @@ impl TrackQueue {
     #[inline]
     pub fn add_with_preload(
         &self,
-        mut track: Track,
-        driver: &mut Driver,
+        mut track: Track<'_>,
+        driver: &mut Driver<'_>,
         preload_time: Option<Duration>,
     ) -> TrackHandle {
         // Attempts to start loading the next track before this one ends.

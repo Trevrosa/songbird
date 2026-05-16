@@ -94,7 +94,7 @@ impl Compose for HlsRequest {
     }
 }
 
-impl From<HlsRequest> for Input {
+impl From<HlsRequest> for Input<'_> {
     fn from(val: HlsRequest) -> Self {
         Input::Lazy(Box::new(val))
     }

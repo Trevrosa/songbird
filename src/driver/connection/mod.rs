@@ -32,19 +32,19 @@ use tokio::{net::UdpSocket, spawn, time::timeout};
 use tracing::{debug, info, instrument};
 use url::Url;
 
-pub(crate) struct Connection {
+pub(crate) struct Connection<'s> {
     pub(crate) info: ConnectionInfo,
     pub(crate) ssrc: u32,
-    pub(crate) ws: Sender<WsMessage>,
+    pub(crate) ws: Sender<WsMessage<'s>>,
 }
 
-impl Connection {
-    pub(crate) async fn new(
+impl Connection<'_> {
+    pub(crate) async fn new<'s>(
         info: ConnectionInfo,
-        interconnect: &Interconnect,
-        config: &Config,
+        interconnect: &Interconnect<'_>,
+        config: &Config<'_>,
         idx: usize,
-    ) -> Result<Connection> {
+    ) -> Result<Connection<'s>> {
         if let Some(t) = config.driver_timeout {
             timeout(
                 t.into(),
@@ -56,12 +56,12 @@ impl Connection {
         }
     }
 
-    pub(crate) async fn new_inner(
+    pub(crate) async fn new_inner<'s>(
         info: ConnectionInfo,
-        interconnect: &Interconnect,
-        config: &Config,
+        interconnect: &Interconnect<'_>,
+        config: &Config<'_>,
         idx: usize,
-    ) -> Result<Connection> {
+    ) -> Result<Connection<'s>> {
         let url = generate_url(&info.endpoint)?;
 
         let mut client = WsStream::connect(url).await?;
@@ -282,7 +282,7 @@ impl Connection {
     }
 
     #[instrument(skip(self))]
-    pub async fn reconnect(&mut self, config: &Config) -> Result<()> {
+    pub async fn reconnect(&mut self, config: &Config<'_>) -> Result<()> {
         if let Some(t) = config.driver_timeout {
             timeout(t.into(), self.reconnect_inner()).await?
         } else {
@@ -345,7 +345,7 @@ impl Connection {
     }
 }
 
-impl Drop for Connection {
+impl Drop for Connection<'_> {
     fn drop(&mut self) {
         info!("Disconnected");
     }
@@ -360,7 +360,7 @@ async fn init_cipher(
     client: &mut WsStream,
     info: &ConnectionInfo,
     mode: CryptoMode,
-    tx: &Sender<WsMessage>,
+    tx: &Sender<WsMessage<'_>>,
 ) -> Result<(Cipher, Option<davey::DaveSession>, AtomicU16)> {
     loop {
         let Some(value) = client.recv_event().await? else {

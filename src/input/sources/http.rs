@@ -208,7 +208,7 @@ impl Compose for HttpRequest {
     }
 }
 
-impl From<HttpRequest> for Input {
+impl From<HttpRequest> for Input<'_> {
     fn from(val: HttpRequest) -> Self {
         Input::Lazy(Box::new(val))
     }

@@ -8,17 +8,17 @@ use crate::{
 };
 use flume::{Receiver, Sender};
 
-pub enum CoreMessage {
+pub enum CoreMessage<'s> {
     ConnectWithResult(ConnectionInfo, Sender<Result<(), Error>>),
     RetryConnect(usize),
     SignalWsClosure(usize, ConnectionInfo, Option<DisconnectReason>),
     Disconnect,
-    SetTrack(Option<Box<TrackContext>>),
-    AddTrack(Box<TrackContext>),
+    SetTrack(Option<Box<TrackContext<'s>>>),
+    AddTrack(Box<TrackContext<'s>>),
     SetBitrate(Bitrate),
     AddEvent(EventData),
     RemoveGlobalEvents,
-    SetConfig(Config),
+    SetConfig(Config<'s>),
     Mute(bool),
     Reconnect,
     FullReconnect,
@@ -26,8 +26,8 @@ pub enum CoreMessage {
     Poison,
 }
 
-pub struct TrackContext {
-    pub track: Track,
+pub struct TrackContext<'s> {
+    pub track: Track<'s>,
     pub handle: TrackHandle,
     pub receiver: Receiver<TrackCommand>,
 }

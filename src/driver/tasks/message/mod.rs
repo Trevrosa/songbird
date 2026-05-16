@@ -17,13 +17,13 @@ use tokio::spawn;
 use tracing::trace;
 
 #[derive(Clone, Debug)]
-pub struct Interconnect {
-    pub core: Sender<CoreMessage>,
+pub struct Interconnect<'s> {
+    pub core: Sender<CoreMessage<'s>>,
     pub events: Sender<EventMessage>,
-    pub mixer: Sender<MixerMessage>,
+    pub mixer: Sender<MixerMessage<'s>>,
 }
 
-impl Interconnect {
+impl Interconnect<'_> {
     pub fn poison(&self) {
         drop(self.events.send(EventMessage::Poison));
     }

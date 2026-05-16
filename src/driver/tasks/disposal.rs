@@ -3,15 +3,15 @@ use flume::{Receiver, Sender};
 use tracing::{instrument, trace};
 
 #[derive(Debug, Clone)]
-pub struct DisposalThread(Sender<DisposalMessage>);
+pub struct DisposalThread<'s>(Sender<DisposalMessage<'s>>);
 
-impl Default for DisposalThread {
+impl Default for DisposalThread<'_> {
     fn default() -> Self {
         Self::run()
     }
 }
 
-impl DisposalThread {
+impl DisposalThread<'_> {
     #[must_use]
     pub fn run() -> Self {
         let (mix_tx, mix_rx) = flume::unbounded();
@@ -24,7 +24,7 @@ impl DisposalThread {
         Self(mix_tx)
     }
 
-    pub(super) fn dispose(&self, message: DisposalMessage) {
+    pub(super) fn dispose(&self, message: DisposalMessage<'_>) {
         drop(self.0.send(message));
     }
 }
@@ -39,6 +39,6 @@ impl DisposalThread {
     clippy::needless_pass_by_value,
     reason = "spawned on background thread, must take by value"
 )]
-fn runner(mix_rx: Receiver<DisposalMessage>) {
+fn runner(mix_rx: Receiver<DisposalMessage<'_>>) {
     while mix_rx.recv().is_ok() {}
 }

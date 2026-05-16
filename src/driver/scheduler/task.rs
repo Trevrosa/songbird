@@ -66,9 +66,9 @@ impl<T: Copy> Default for ResId<T> {
 ///
 /// Since we do not allocate packet buffers for idle threads, this
 /// struct includes various RTP fields.
-pub struct ParkedMixer {
+pub struct ParkedMixer<'s> {
     /// Mixer, track, etc. state as well as message receivers.
-    pub mixer: Box<Mixer>,
+    pub mixer: Box<Mixer<'s>>,
     /// The SSRC assigned to this voice session.
     pub ssrc: u32,
     /// The last recorded/generated RTP sequence.
@@ -88,10 +88,10 @@ pub struct ParkedMixer {
 }
 
 #[allow(missing_docs)]
-impl ParkedMixer {
+impl ParkedMixer<'_> {
     /// Create a new `Mixer` in a parked state.
     #[must_use]
-    pub fn new(mix_rx: Receiver<MixerMessage>, interconnect: Interconnect, config: Config) -> Self {
+    pub fn new(mix_rx: Receiver<MixerMessage<'_>>, interconnect: Interconnect<'_>, config: Config<'_>) -> Self {
         Self {
             mixer: Box::new(Mixer::new(mix_rx, Handle::current(), interconnect, config)),
             ssrc: 0,
@@ -107,7 +107,7 @@ impl ParkedMixer {
     ///
     /// Any requests which would cause this mixer to become live will terminate
     /// this task.
-    pub fn spawn_forwarder(&mut self, tx: Sender<SchedulerMessage>, id: TaskId) {
+    pub fn spawn_forwarder(&mut self, tx: Sender<SchedulerMessage<'_>>, id: TaskId) {
         let (kill_tx, kill_rx) = flume::bounded(1);
         self.cull_handle = Some(kill_tx);
 
@@ -135,7 +135,7 @@ impl ParkedMixer {
     }
 
     /// Returns whether the mixer should exit and be cleaned up.
-    pub fn handle_message(&mut self, msg: MixerMessage) -> Result<bool, ()> {
+    pub fn handle_message(&mut self, msg: MixerMessage<'_>) -> Result<bool, ()> {
         match msg {
             MixerMessage::SetConn(conn, ssrc) => {
                 // Overridden because payload-specific fields are carried

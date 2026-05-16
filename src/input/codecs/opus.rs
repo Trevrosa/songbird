@@ -1,23 +1,22 @@
 use crate::constants::*;
-use opus2::{Channels, Decoder as Opus2Decoder, ErrorCode};
+use opus2::{Channels as OpusChannels, Decoder as Opus2Decoder, ErrorCode};
 use symphonia_core::{
-    audio::{AsAudioBufferRef, AudioBuffer, AudioBufferRef, Layout, Signal, SignalSpec},
+    audio::{
+        layouts::CHANNEL_LAYOUT_STEREO, AsGenericAudioBufferRef, AudioBuffer, AudioSpec, Channels,
+        GenericAudioBufferRef,
+    },
     codecs::{
-        CodecDescriptor,
-        CodecParameters,
-        Decoder,
-        DecoderOptions,
-        FinalizeResult,
-        CODEC_TYPE_OPUS,
+        audio::{AudioCodecParameters, AudioDecoder, FinalizeResult},
+        CodecInfo,
     },
     errors::{decode_error, Result as SymphResult},
-    formats::Packet,
+    packet::Packet,
 };
 
 /// Opus decoder for symphonia, based on libopus v1.5 (via [`opus2`]).
 pub struct OpusDecoder {
     inner: Opus2Decoder,
-    params: CodecParameters,
+    params: AudioCodecParameters,
     buf: AudioBuffer<f32>,
     rawbuf: Vec<f32>,
 }
@@ -31,8 +30,14 @@ pub struct OpusDecoder {
 /// No access to other internal state relies on unsafety or crosses FFI.
 unsafe impl Sync for OpusDecoder {}
 
-impl OpusDecoder {
-    fn decode_inner(&mut self, packet: &Packet) -> SymphResult<()> {
+impl AudioDecoder for OpusDecoder {
+    // FIXME: idk where CodecParameters and DecoderOptions went
+    fn decode_ref(
+        &mut self,
+        packet: &symphonia_core::packet::PacketRef<'_>,
+    ) -> SymphResult<GenericAudioBufferRef<'_>> {
+        let inner = Opus2Decoder::new(SAMPLE_RATE, OpusChannels::Stereo).unwrap();
+
         let s_ct = loop {
             if packet.buf().len() > i32::MAX as usize {
                 return decode_error("Opus packet was too large (greater than i32::MAX bytes).");
@@ -53,8 +58,8 @@ impl OpusDecoder {
 
                     self.rawbuf.resize(new_size, 0.0);
                     self.buf = AudioBuffer::new(
-                        self.rawbuf.len() as u64 / 2,
-                        SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, Layout::Stereo),
+                        AudioSpec::new(self.rawbuf.len() as u32 / 2, Channels::Discrete(2)),
+                        AudioSpec::new_with_layout(SAMPLE_RATE_RAW as u32, CHANNEL_LAYOUT_STEREO),
                     );
                 },
                 Err(e) => {
@@ -75,41 +80,22 @@ impl OpusDecoder {
             }
         }
 
-        Ok(())
-    }
-}
-
-impl Decoder for OpusDecoder {
-    fn try_new(params: &CodecParameters, _options: &DecoderOptions) -> SymphResult<Self> {
-        let inner = Opus2Decoder::new(SAMPLE_RATE, Channels::Stereo).unwrap();
-
-        let mut params = params.clone();
-        params.with_sample_rate(SAMPLE_RATE_RAW as u32);
-
-        Ok(Self {
-            inner,
-            params,
-            buf: AudioBuffer::new(
-                MONO_FRAME_SIZE as u64,
-                SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, Layout::Stereo),
-            ),
-            rawbuf: vec![0.0f32; STEREO_FRAME_SIZE],
-        })
+        Ok(self.buf.as_generic_audio_buffer_ref())
     }
 
-    fn supported_codecs() -> &'static [CodecDescriptor] {
-        &[symphonia_core::support_codec!(
-            CODEC_TYPE_OPUS,
-            "opus",
-            "libopus (1.5+, opus2)"
-        )]
+    fn codec_info(&self) -> &CodecInfo {
+        &CodecInfo {
+            short_name: "opus",
+            long_name: "libopus (1.5+, opus2)",
+            profiles: &[], // FIXME: i think no profiles
+        }
     }
 
-    fn codec_params(&self) -> &CodecParameters {
+    fn codec_params(&self) -> &AudioCodecParameters {
         &self.params
     }
 
-    fn decode(&mut self, packet: &Packet) -> SymphResult<AudioBufferRef<'_>> {
+    fn decode(&mut self, packet: &Packet) -> SymphResult<GenericAudioBufferRef<'_>> {
         if let Err(e) = self.decode_inner(packet) {
             self.buf.clear();
             Err(e)
@@ -126,7 +112,7 @@ impl Decoder for OpusDecoder {
         FinalizeResult::default()
     }
 
-    fn last_decoded(&self) -> AudioBufferRef<'_> {
+    fn last_decoded(&self) -> GenericAudioBufferRef<'_> {
         self.buf.as_audio_buffer_ref()
     }
 }

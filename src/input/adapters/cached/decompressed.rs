@@ -36,7 +36,7 @@ impl Decompressed {
     /// Wrap an existing [`Input`] with an in-memory store, decompressed into `f32` PCM audio.
     ///
     /// [`Input`]: Input
-    pub async fn new(source: Input) -> Result<Self, CodecCacheError> {
+    pub async fn new(source: Input<'_>) -> Result<Self, CodecCacheError> {
         Self::with_config(source, None).await
     }
 
@@ -45,7 +45,7 @@ impl Decompressed {
     ///
     /// [`Input`]: Input
     pub async fn with_config(
-        source: Input,
+        source: Input<'_>,
         config: Option<Config>,
     ) -> Result<Self, CodecCacheError> {
         let input = match source {
@@ -81,6 +81,7 @@ impl Decompressed {
         let track_info = parsed.decoder.codec_params();
         let chan_count = track_info
             .channels
+            .as_ref()
             .map(Channels::count)
             .ok_or(CodecCacheError::UnknownChannelCount)?;
         let sample_rate = SAMPLE_RATE_RAW as u32;
@@ -132,8 +133,8 @@ impl MediaSource for Decompressed {
     }
 }
 
-impl From<Decompressed> for Input {
-    fn from(val: Decompressed) -> Input {
+impl From<Decompressed> for Input<'_> {
+    fn from(val: Decompressed) -> Self {
         let input = Box::new(val);
         Input::Live(LiveInput::Raw(AudioStream { input }), None)
     }

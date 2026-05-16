@@ -1,4 +1,4 @@
-use symphonia_core::{codecs::Decoder, formats::FormatReader, probe::ProbedMetadata};
+use symphonia_core::{codecs::audio::AudioDecoder, formats::{FormatReader, probe::ProbeMetadataData}};
 
 /// An audio file which has had its headers parsed and decoder state built.
 pub struct Parsed {
@@ -10,7 +10,7 @@ pub struct Parsed {
     pub format: Box<dyn FormatReader>,
 
     /// Decoder state for the chosen track.
-    pub decoder: Box<dyn Decoder>,
+    pub decoder: Box<dyn AudioDecoder>,
 
     /// The chosen track's ID.
     ///
@@ -21,7 +21,7 @@ pub struct Parsed {
     ///
     /// Typically, this detects metadata *outside* the file's core format (i.e.,
     /// ID3 tags in MP3 and WAV files).
-    pub meta: ProbedMetadata,
+    pub meta: ProbeMetadataData,
 
     /// Whether the contained format supports arbitrary seeking.
     ///

@@ -4,10 +4,10 @@ use symphonia_core::errors::Error as SymphError;
 
 use super::*;
 
-pub struct InternalTrack {
+pub struct InternalTrack<'s> {
     pub(crate) playing: PlayMode,
     pub(crate) volume: f32,
-    pub(crate) input: InputState,
+    pub(crate) input: InputState<'s>,
     pub(crate) mix_state: DecodeState,
     pub(crate) position: Duration,
     pub(crate) play_time: Duration,
@@ -16,9 +16,9 @@ pub struct InternalTrack {
     pub(crate) callbacks: Callbacks,
 }
 
-impl<'a> InternalTrack {
+impl<'a> InternalTrack<'_> {
     pub(crate) fn decompose_track(
-        val: TrackContext,
+        val: TrackContext<'_>,
     ) -> (Self, EventStore, TrackState, TrackHandle) {
         let TrackContext {
             handle,
@@ -69,7 +69,7 @@ impl<'a> InternalTrack {
         }
     }
 
-    pub(crate) fn process_commands(&mut self, index: usize, ic: &Interconnect) -> Action {
+    pub(crate) fn process_commands(&mut self, index: usize, ic: &Interconnect<'_>) -> Action {
         // Note: disconnection and an empty channel are both valid,
         // and should allow the audio object to keep running as intended.
 
@@ -176,9 +176,9 @@ impl<'a> InternalTrack {
     pub(crate) fn get_or_ready_input(
         &'a mut self,
         id: usize,
-        interconnect: &Interconnect,
+        interconnect: &Interconnect<'_>,
         pool: &BlockyTaskPool,
-        config: &Arc<Config>,
+        config: &Arc<Config<'_>>,
         prevent_events: bool,
     ) -> StdResult<(&'a mut Parsed, &'a mut DecodeState), InputReadyingError> {
         let input = &mut self.input;
@@ -319,9 +319,9 @@ impl<'a> InternalTrack {
         &mut self,
         id: usize,
         request: SeekRequest,
-        interconnect: &Interconnect,
+        interconnect: &Interconnect<'_>,
         pool: &BlockyTaskPool,
-        config: &Arc<Config>,
+        config: &Arc<Config<'_>>,
         prevent_events: bool,
     ) {
         if let InputState::Preparing(p) = &mut self.input {

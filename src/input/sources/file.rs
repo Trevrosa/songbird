@@ -17,7 +17,7 @@ impl<P: AsRef<Path>> File<P> {
     }
 }
 
-impl<P: AsRef<Path> + Send + Sync + 'static> From<File<P>> for Input {
+impl<P: AsRef<Path> + Send + Sync + 'static> From<File<P>> for Input<'_> {
     fn from(val: File<P>) -> Self {
         Input::Lazy(Box::new(val))
     }

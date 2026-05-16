@@ -18,7 +18,7 @@ use std::sync::Arc;
 pub struct SongbirdKey;
 
 impl TypeMapKey for SongbirdKey {
-    type Value = Arc<Songbird>;
+    type Value = Arc<Songbird<'static>>;
 }
 
 /// Installs a new songbird instance into the serenity client.
@@ -32,7 +32,7 @@ pub fn register(client_builder: ClientBuilder) -> ClientBuilder {
 /// Installs a given songbird instance into the serenity client.
 ///
 /// This should be called after any uses of `ClientBuilder::type_map`.
-pub fn register_with(client_builder: ClientBuilder, voice: Arc<Songbird>) -> ClientBuilder {
+pub fn register_with(client_builder: ClientBuilder, voice: Arc<Songbird<'_>>) -> ClientBuilder {
     client_builder
         .voice_manager_arc(voice.clone())
         .type_map_insert::<SongbirdKey>(voice)
@@ -41,14 +41,14 @@ pub fn register_with(client_builder: ClientBuilder, voice: Arc<Songbird>) -> Cli
 /// Installs a given songbird instance into the serenity client.
 ///
 /// This should be called after any uses of `ClientBuilder::type_map`.
-pub fn register_from_config(client_builder: ClientBuilder, config: Config) -> ClientBuilder {
+pub fn register_from_config(client_builder: ClientBuilder, config: Config<'_>) -> ClientBuilder {
     let voice = Songbird::serenity_from_config(config);
     register_with(client_builder, voice)
 }
 
 /// Retrieve the Songbird voice client from a serenity context's
 /// shared key-value store.
-pub async fn get(ctx: &Context) -> Option<Arc<Songbird>> {
+pub async fn get(ctx: &Context) -> Option<Arc<Songbird<'_>>> {
     let data = ctx.data.read().await;
 
     data.get::<SongbirdKey>().cloned()
@@ -68,10 +68,10 @@ pub trait SerenityInit {
     fn register_songbird(self) -> Self;
     /// Registers a given Songbird voice system with serenity, as above.
     #[must_use]
-    fn register_songbird_with(self, voice: Arc<Songbird>) -> Self;
+    fn register_songbird_with(self, voice: Arc<Songbird<'_>>) -> Self;
     /// Registers a Songbird voice system serenity, based on the given configuration.
     #[must_use]
-    fn register_songbird_from_config(self, config: Config) -> Self;
+    fn register_songbird_from_config(self, config: Config<'_>) -> Self;
 }
 
 impl SerenityInit for ClientBuilder {
@@ -79,11 +79,11 @@ impl SerenityInit for ClientBuilder {
         register(self)
     }
 
-    fn register_songbird_with(self, voice: Arc<Songbird>) -> Self {
+    fn register_songbird_with(self, voice: Arc<Songbird<'_>>) -> Self {
         register_with(self, voice)
     }
 
-    fn register_songbird_from_config(self, config: Config) -> Self {
+    fn register_songbird_from_config(self, config: Config<'_>) -> Self {
         register_from_config(self, config)
     }
 }

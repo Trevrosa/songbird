@@ -68,7 +68,7 @@ use uuid::Uuid;
 ///
 /// [`Driver`]: crate::driver::Driver
 /// [`Driver::play`]: crate::driver::Driver::play
-pub struct Track {
+pub struct Track<'s> {
     /// Whether or not this sound is currently playing.
     ///
     /// Defaults to [`PlayMode::Play`].
@@ -83,7 +83,7 @@ pub struct Track {
     pub volume: f32,
 
     /// The live or lazily-initialised audio stream to be played.
-    pub input: Input,
+    pub input: Input<'s>,
 
     /// List of events attached to this audio track.
     ///
@@ -109,29 +109,29 @@ pub struct Track {
     pub user_data: Arc<dyn Any + Send + Sync>,
 }
 
-impl Track {
+impl Track<'_> {
     /// Create a new track directly from an [`Input`] and a random [`Uuid`].
     #[must_use]
-    pub fn new(input: Input) -> Self {
+    pub fn new(input: Input<'_>) -> Self {
         Self::new_with_uuid(input, Uuid::new_v4())
     }
 
     /// Create a new track directly from an [`Input`] with a custom [`Uuid`].
     #[must_use]
-    pub fn new_with_uuid(input: Input, uuid: Uuid) -> Self {
+    pub fn new_with_uuid(input: Input<'_>, uuid: Uuid) -> Self {
         Self::new_with_uuid_and_data(input, uuid, Arc::new(()))
     }
 
     /// Create a new track directly from an [`Input`], user data to be associated with the track, and a random [`Uuid`].
     #[must_use]
-    pub fn new_with_data(input: Input, user_data: Arc<dyn Any + Send + Sync + 'static>) -> Self {
+    pub fn new_with_data(input: Input<'_>, user_data: Arc<dyn Any + Send + Sync + 'static>) -> Self {
         Self::new_with_uuid_and_data(input, Uuid::new_v4(), user_data)
     }
 
     /// Create a new track directly from an [`Input`], user data to be associated with the track, and a custom [`Uuid`].
     #[must_use]
     pub fn new_with_uuid_and_data(
-        input: Input,
+        input: Input<'_>,
         uuid: Uuid,
         user_data: Arc<dyn Any + Send + Sync + 'static>,
     ) -> Self {
@@ -196,7 +196,7 @@ impl Track {
         self
     }
 
-    pub(crate) fn into_context(self) -> (TrackHandle, TrackContext) {
+    pub(crate) fn into_context<'s>(self) -> (TrackHandle, TrackContext<'s>) {
         let (tx, receiver) = flume::unbounded();
         let handle = TrackHandle::new(tx, self.uuid, self.user_data.clone());
 
@@ -211,7 +211,7 @@ impl Track {
 }
 
 /// Any [`Input`] (or struct which can be used as one) can also be made into a [`Track`].
-impl<T: Into<Input>> From<T> for Track {
+impl<'s, T: Into<Input<'s>>> From<T> for Track<'s> {
     // NOTE: this is `Into` to support user-given structs which can
     // only `impl Into<Input>`.
     fn from(val: T) -> Self {

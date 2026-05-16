@@ -12,22 +12,22 @@ const THREAD_CULL_TIMER: Duration = Duration::from_secs(60);
 
 /// An async task responsible for maintaining UDP keepalives and event state for inactive
 /// `Mixer` tasks.
-pub(crate) struct Idle {
+pub(crate) struct Idle<'s> {
     config: Config,
     cull_timer: Duration,
-    tasks: IntMap<TaskId, ParkedMixer>,
+    tasks: IntMap<TaskId, ParkedMixer<'s>>,
     // track taskids which are live to prevent their realloc? unlikely w u64 but still
     pub(crate) stats: Arc<StatBlock>,
-    rx: Receiver<SchedulerMessage>,
-    tx: Sender<SchedulerMessage>,
+    rx: Receiver<SchedulerMessage<'s>>,
+    tx: Sender<SchedulerMessage<'s>>,
     next_id: TaskId,
     next_worker_id: WorkerId,
-    workers: Vec<Worker>,
+    workers: Vec<Worker<'s>>,
     to_cull: Vec<TaskId>,
 }
 
-impl Idle {
-    pub fn new(config: Config) -> (Self, Sender<SchedulerMessage>) {
+impl Idle<'_> {
+    pub fn new<'s>(config: Config) -> (Self, Sender<SchedulerMessage<'s>>) {
         let (tx, rx) = flume::unbounded();
 
         let stats = Arc::default();
@@ -153,7 +153,7 @@ impl Idle {
     }
 
     /// Promote a task to a live mixer thread.
-    fn schedule_mixer(&mut self, mut task: ParkedMixer, id: TaskId, avoid: Option<WorkerId>) {
+    fn schedule_mixer(&mut self, mut task: ParkedMixer<'_>, id: TaskId, avoid: Option<WorkerId>) {
         if task.send_gateway_speaking().is_ok() {
             // If a worker ever completely fails, then we need to remove it here
             // `fetch_worker` will either find another, or generate us a new one if
@@ -192,9 +192,9 @@ impl Idle {
     /// If an inbound task has spilled from another thread, then do not reschedule it there.
     fn fetch_worker(
         &mut self,
-        task: &ParkedMixer,
+        task: &ParkedMixer<'_>,
         avoid: Option<WorkerId>,
-    ) -> (&mut Worker, usize) {
+    ) -> (&mut Worker<'_>, usize) {
         let idx = self
             .workers
             .iter()
@@ -234,7 +234,7 @@ mod test {
         let sched = Scheduler::new(Config::default());
         let cfg = DriverConfig::default().scheduler(sched.clone());
 
-        let _drivers: Vec<Driver> = (0..1024).map(|_| Driver::new(cfg.clone())).collect();
+        let _drivers: Vec<Driver<'_>> = (0..1024).map(|_| Driver::new(cfg.clone())).collect();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         assert_eq!(sched.total_tasks(), 1024);
@@ -257,7 +257,7 @@ mod test {
 
         let n_tasks = 1024;
 
-        let _drivers: Vec<Driver> = (0..n_tasks)
+        let _drivers: Vec<Driver<'_>> = (0..n_tasks)
             .map(|_| {
                 let mut driver = Driver::new(cfg.clone());
                 let file = File::new(FILE_WEBM_TARGET);

@@ -8,10 +8,11 @@ use std::{
     ops::Range,
 };
 use symphonia_core::{
-    audio::{AudioBuffer, AudioBufferRef, Layout, Signal, SignalSpec},
-    conv::IntoSample,
+    audio::{
+        conv::IntoSample, layouts, sample::Sample, Audio, AudioBuffer, AudioSpec,
+        GenericAudioBufferRef,
+    },
     io::MediaSource,
-    sample::Sample,
 };
 
 const SAMPLE_LEN: usize = mem::size_of::<f32>();
@@ -56,10 +57,10 @@ impl ToAudioBytes {
             chans.count()
         } else if let Some(layout) = maybe_layout {
             match layout {
-                Layout::Mono => 1,
-                Layout::Stereo => 2,
-                Layout::TwoPointOne => 3,
-                Layout::FivePointOne => 6,
+                layouts::CHANNEL_LAYOUT_MONO => 1,
+                layouts::CHANNEL_LAYOUT_STEREO => 2,
+                layouts::CHANNEL_LAYOUT_2P1 => 3,
+                layouts::CHANNEL_LAYOUT_5P1 => 6,
             }
         } else {
             2
@@ -69,14 +70,14 @@ impl ToAudioBytes {
 
         let resample = (sample_rate != SAMPLE_RATE_RAW as u32).then(|| {
             let spec = if let Some(chans) = maybe_chans {
-                SignalSpec::new(SAMPLE_RATE_RAW as u32, chans)
+                AudioSpec::new(SAMPLE_RATE_RAW as u32, chans)
             } else if let Some(layout) = maybe_layout {
-                SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, layout)
+                AudioSpec::new_with_layout(SAMPLE_RATE_RAW as u32, layout)
             } else {
-                SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, Layout::Stereo)
+                AudioSpec::new_with_layout(SAMPLE_RATE_RAW as u32, layouts::CHANNEL_LAYOUT_STEREO)
             };
 
-            let scratch = AudioBuffer::<f32>::new(MONO_FRAME_SIZE as u64, spec);
+            let scratch = AudioBuffer::<f32>::new(spec, MONO_FRAME_SIZE);
 
             // TODO: integ. error handling here.
             let resampler = FftFixedOut::new(
@@ -176,7 +177,7 @@ impl Read for ToAudioBytes {
 
                 self.parsed
                     .decoder
-                    .decode(&pkt)
+                    .decode(&pkt.unwrap()) // FIXME: ?
                     .inspect(|pkt| {
                         self.inner_pos = 0..pkt.frames();
                     })
@@ -241,12 +242,12 @@ impl Read for ToAudioBytes {
                 let force_copy =
                     resample.scratch.frames() != 0 || needed_in_frames > available_frames;
 
-                if (!force_copy) && matches!(source_packet, AudioBufferRef::F32(_)) {
+                if (!force_copy) && matches!(source_packet, GenericAudioBufferRef::F32(_)) {
                     // This is the only case where we can pull off a straight resample...
                     // I.e., skip scratch.
 
                     // NOTE: if let needed as if-let && {bool} is nightly only.
-                    if let AudioBufferRef::F32(s_pkt) = source_packet {
+                    if let GenericAudioBufferRef::F32(s_pkt) = source_packet {
                         let refs: Vec<&[f32]> = s_pkt
                             .planes()
                             .planes()
@@ -335,7 +336,7 @@ impl MediaSource for ToAudioBytes {
 
 #[inline]
 fn write_out(
-    source: &AudioBufferRef<'_>,
+    source: &GenericAudioBufferRef<'_>,
     target: &mut [u8],
     source_pos: &mut Range<usize>,
     spillover: &mut Vec<f32>,
@@ -343,26 +344,36 @@ fn write_out(
     num_chans: usize,
 ) -> usize {
     match source {
-        AudioBufferRef::U8(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::U16(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::U24(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::U32(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::S8(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::S16(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::S24(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::S32(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::F32(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
-        AudioBufferRef::F64(v) =>
-            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans),
+        GenericAudioBufferRef::U8(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::U16(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::U24(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::U32(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::S8(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::S16(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::S24(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::S32(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::F32(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
+        GenericAudioBufferRef::F64(v) => {
+            write_symph_buffer(v, target, source_pos, spillover, spill_range, num_chans)
+        },
     }
 }
 

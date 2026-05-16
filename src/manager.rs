@@ -42,14 +42,14 @@ struct ClientData {
 ///
 /// [`Call`]: Call
 #[derive(Debug)]
-pub struct Songbird {
+pub struct Songbird<'s> {
     client_data: OnceLock<ClientData>,
-    calls: DashMap<GuildId, Arc<Mutex<Call>>>,
+    calls: DashMap<GuildId, Arc<Mutex<Call<'s>>>>,
     sharder: Sharder,
-    config: PRwLock<Config>,
+    config: PRwLock<Config<'s>>,
 }
 
-impl Songbird {
+impl<'s> Songbird<'s> {
     #[cfg(feature = "serenity")]
     /// Create a new Songbird instance for serenity.
     ///
@@ -68,7 +68,7 @@ impl Songbird {
     ///
     /// [registered]: crate::serenity::register_with
     #[must_use]
-    pub fn serenity_from_config(config: Config) -> Arc<Self> {
+    pub fn serenity_from_config(config: Config<'s>) -> Arc<Self> {
         Arc::new(Self {
             client_data: OnceLock::new(),
             calls: DashMap::new(),
@@ -137,7 +137,7 @@ impl Songbird {
     /// Retrieves a [`Call`] for the given guild, if one already exists.
     ///
     /// [`Call`]: Call
-    pub fn get<G: Into<GuildId>>(&self, guild_id: G) -> Option<Arc<Mutex<Call>>> {
+    pub fn get<G: Into<GuildId>>(&self, guild_id: G) -> Option<Arc<Mutex<Call<'s>>>> {
         self.calls
             .get(&guild_id.into())
             .map(|mapref| Arc::clone(&mapref))
@@ -150,14 +150,14 @@ impl Songbird {
     ///
     /// [`Call`]: Call
     #[inline]
-    pub fn get_or_insert<G>(&self, guild_id: G) -> Arc<Mutex<Call>>
+    pub fn get_or_insert<G>(&self, guild_id: G) -> Arc<Mutex<Call<'s>>>
     where
         G: Into<GuildId>,
     {
         self.get_or_insert_inner(guild_id.into())
     }
 
-    fn get_or_insert_inner(&self, guild_id: GuildId) -> Arc<Mutex<Call>> {
+    fn get_or_insert_inner(&self, guild_id: GuildId) -> Arc<Mutex<Call<'s>>> {
         self.calls
             .entry(guild_id)
             .or_insert_with(|| {
@@ -185,7 +185,7 @@ impl Songbird {
     }
 
     /// Creates an iterator for all [`Call`]s currently managed.
-    pub fn iter(&self) -> Iter<'_> {
+    pub fn iter(&self) -> Iter<'_, 's> {
         Iter {
             inner: self.calls.iter().map(|x| (*x.key(), Arc::clone(x.value()))),
         }
@@ -197,7 +197,7 @@ impl Songbird {
     /// Changes made here will apply to new Call and Driver instances only.
     ///
     /// Requires the `"driver"` feature.
-    pub fn set_config(&self, new_config: Config) {
+    pub fn set_config(&self, new_config: Config<'s>) {
         let mut config = self.config.write();
         *config = new_config;
     }
@@ -228,7 +228,7 @@ impl Songbird {
     /// [`get`]: Songbird::get
     /// [`process`]: #method.process
     #[inline]
-    pub async fn join<C, G>(&self, guild_id: G, channel_id: C) -> JoinResult<Arc<Mutex<Call>>>
+    pub async fn join<C, G>(&self, guild_id: G, channel_id: C) -> JoinResult<Arc<Mutex<Call<'s>>>>
     where
         C: Into<ChannelId>,
         G: Into<GuildId>,
@@ -241,7 +241,7 @@ impl Songbird {
         &self,
         guild_id: GuildId,
         channel_id: ChannelId,
-    ) -> JoinResult<Arc<Mutex<Call>>> {
+    ) -> JoinResult<Arc<Mutex<Call<'s>>>> {
         let call = self.get_or_insert(guild_id);
 
         let stage_1 = {
@@ -270,7 +270,7 @@ impl Songbird {
         &self,
         guild_id: G,
         channel_id: C,
-    ) -> JoinResult<(ConnectionInfo, Arc<Mutex<Call>>)>
+    ) -> JoinResult<(ConnectionInfo, Arc<Mutex<Call<'s>>>)>
     where
         C: Into<ChannelId>,
         G: Into<GuildId>,
@@ -283,7 +283,7 @@ impl Songbird {
         &self,
         guild_id: GuildId,
         channel_id: ChannelId,
-    ) -> JoinResult<(ConnectionInfo, Arc<Mutex<Call>>)> {
+    ) -> JoinResult<(ConnectionInfo, Arc<Mutex<Call<'s>>>)> {
         let call = self.get_or_insert(guild_id);
 
         let stage_1 = {
@@ -350,10 +350,10 @@ impl Songbird {
     }
 }
 
-impl<'a> IntoIterator for &'a Songbird {
-    type Item = <Iter<'a> as Iterator>::Item;
+impl<'a, 's> IntoIterator for &'a Songbird<'s> {
+    type Item = <Iter<'a, 's> as Iterator>::Item;
 
-    type IntoIter = Iter<'a>;
+    type IntoIter = Iter<'a, 's>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -413,7 +413,7 @@ impl Songbird {
 
 #[cfg(feature = "serenity")]
 #[async_trait]
-impl VoiceGatewayManager for Songbird {
+impl VoiceGatewayManager for Songbird<'_> {
     async fn initialise(&self, shard_count: u32, user_id: SerenityUser) {
         debug!(
             "Initialising Songbird for Serenity: ID {:?}, {} Shards",
@@ -464,19 +464,19 @@ impl VoiceGatewayManager for Songbird {
     }
 }
 
-type DashMapIter<'a> = dashmap::iter::Iter<'a, GuildId, Arc<Mutex<Call>>>;
-type InnerIter<'a> = std::iter::Map<
-    DashMapIter<'a>,
-    fn(<DashMapIter<'a> as Iterator>::Item) -> (GuildId, Arc<Mutex<Call>>),
+type DashMapIter<'a, 's> = dashmap::iter::Iter<'a, GuildId, Arc<Mutex<Call<'s>>>>;
+type InnerIter<'a, 's> = std::iter::Map<
+    DashMapIter<'a, 's>,
+    fn(<DashMapIter<'a, 's> as Iterator>::Item) -> (GuildId, Arc<Mutex<Call<'s>>>),
 >;
 
 /// An iterator over all [`Call`]s currently stored in the manager instance.
-pub struct Iter<'a> {
-    inner: InnerIter<'a>,
+pub struct Iter<'a, 's> {
+    inner: InnerIter<'a, 's>,
 }
 
-impl Iterator for Iter<'_> {
-    type Item = (GuildId, Arc<Mutex<Call>>);
+impl<'s> Iterator for Iter<'_, 's> {
+    type Item = (GuildId, Arc<Mutex<Call<'s>>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()

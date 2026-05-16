@@ -39,11 +39,8 @@ use std::{
     time::{Duration, Instant},
 };
 use symphonia_core::{
-    audio::{AudioBuffer, AudioBufferRef, Layout, SampleBuffer, Signal, SignalSpec},
-    codecs::CODEC_TYPE_OPUS,
-    conv::IntoSample,
+    audio::{Audio, AudioBuffer, AudioSpec, layouts},
     formats::SeekTo,
-    sample::Sample,
     units::Time,
 };
 use tokio::runtime::Handle;
@@ -54,30 +51,30 @@ use crate::driver::test_config::{OutputMessage, OutputMode};
 #[cfg(test)]
 use discortp::Packet as _;
 
-pub struct Mixer {
+pub struct Mixer<'s> {
     pub bitrate: Bitrate,
-    pub config: Arc<Config>,
+    pub config: Arc<Config<'s>>,
     pub conn_active: Option<MixerConnection>,
     pub deadline: Instant,
-    pub disposer: DisposalThread,
+    pub disposer: DisposalThread<'s>,
     pub encoder: OpusEncoder,
-    pub interconnect: Interconnect,
-    pub mix_rx: Receiver<MixerMessage>,
+    pub interconnect: Interconnect<'s>,
+    pub mix_rx: Receiver<MixerMessage<'s>>,
     pub muted: bool,
     // pub packet: [u8; VOICE_PACKET_MAX],
     pub prevent_events: bool,
     pub silence_frames: u8,
     pub soft_clip: SoftClip,
     thread_pool: BlockyTaskPool,
-    pub ws: Option<Sender<WsMessage>>,
+    pub ws: Option<Sender<WsMessage<'s>>>,
 
     pub keepalive_deadline: Instant,
     pub keepalive_packet: [u8; MutableKeepalivePacket::minimum_packet_size()],
 
-    pub tracks: Vec<InternalTrack>,
+    pub tracks: Vec<InternalTrack<'s>>,
     track_handles: Vec<TrackHandle>,
 
-    sample_buffer: SampleBuffer<f32>,
+    sample_buffer: AudioBuffer<f32>, // FIXME: ?
     symph_mix: AudioBuffer<f32>,
     resample_scratch: AudioBuffer<f32>,
 
@@ -95,13 +92,13 @@ fn new_encoder(bitrate: Bitrate, mix_mode: MixMode) -> Result<OpusEncoder> {
     Ok(encoder)
 }
 
-impl Mixer {
+impl Mixer<'_> {
     #[must_use]
     pub fn new(
-        mix_rx: Receiver<MixerMessage>,
+        mix_rx: Receiver<MixerMessage<'_>>,
         async_handle: Handle,
-        interconnect: Interconnect,
-        config: Config,
+        interconnect: Interconnect<'_>,
+        config: Config<'_>,
     ) -> Self {
         let bitrate = DEFAULT_BITRATE;
         let encoder = new_encoder(bitrate, config.mix_mode)
@@ -120,23 +117,23 @@ impl Mixer {
         let disposer = config.disposer.clone().unwrap_or_default();
         let config = config.into();
 
-        let sample_buffer = SampleBuffer::<f32>::new(
-            MONO_FRAME_SIZE as u64,
-            symphonia_core::audio::SignalSpec::new_with_layout(
+        let sample_buffer = AudioBuffer::<f32>::new(
+            AudioSpec::new_with_layout(
                 SAMPLE_RATE_RAW as u32,
                 symph_layout,
             ),
+            MONO_FRAME_SIZE,
         );
         let symph_mix = AudioBuffer::<f32>::new(
-            MONO_FRAME_SIZE as u64,
-            symphonia_core::audio::SignalSpec::new_with_layout(
+            AudioSpec::new_with_layout(
                 SAMPLE_RATE_RAW as u32,
                 symph_layout,
             ),
+            MONO_FRAME_SIZE,
         );
         let resample_scratch = AudioBuffer::<f32>::new(
-            MONO_FRAME_SIZE as u64,
-            SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, Layout::Stereo),
+            AudioSpec::new_with_layout(SAMPLE_RATE_RAW as u32, layouts::CHANNEL_LAYOUT_STEREO),
+            MONO_FRAME_SIZE,
         );
 
         let deadline = Instant::now();
@@ -182,7 +179,7 @@ impl Mixer {
         &mut self,
         event_failure: bool,
         conn_failure: bool,
-    ) -> StdResult<(), SendError<CoreMessage>> {
+    ) -> StdResult<(), SendError<CoreMessage<'_>>> {
         // event failure? rebuild interconnect.
         // ws or udp failure? full connect
         // (soft reconnect is covered by the ws task.)
@@ -200,14 +197,14 @@ impl Mixer {
         Ok(())
     }
 
-    pub(crate) fn rebuild_interconnect(&mut self) -> StdResult<(), SendError<CoreMessage>> {
+    pub(crate) fn rebuild_interconnect(&mut self) -> StdResult<(), SendError<CoreMessage<'_>>> {
         self.prevent_events = true;
         self.interconnect
             .core
             .send(CoreMessage::RebuildInterconnect)
     }
 
-    pub(crate) fn full_reconnect_gateway(&mut self) -> StdResult<(), SendError<CoreMessage>> {
+    pub(crate) fn full_reconnect_gateway(&mut self) -> StdResult<(), SendError<CoreMessage<'_>>> {
         self.conn_active = None;
         self.interconnect.core.send(CoreMessage::FullReconnect)
     }
@@ -215,7 +212,7 @@ impl Mixer {
     #[inline]
     pub(crate) fn handle_message(
         &mut self,
-        msg: MixerMessage,
+        msg: MixerMessage<'_>,
         packet: &mut [u8],
     ) -> (bool, bool, bool) {
         let mut events_failure = false;
@@ -300,13 +297,13 @@ impl Mixer {
                     }
 
                     let sl = new_config.mix_mode.symph_layout();
-                    self.sample_buffer = SampleBuffer::<f32>::new(
-                        MONO_FRAME_SIZE as u64,
-                        SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, sl),
+                    self.sample_buffer = AudioBuffer::<f32>::new(
+                        AudioSpec::new_with_layout(SAMPLE_RATE_RAW as u32, sl),
+                        MONO_FRAME_SIZE,
                     );
                     self.symph_mix = AudioBuffer::<f32>::new(
-                        MONO_FRAME_SIZE as u64,
-                        SignalSpec::new_with_layout(SAMPLE_RATE_RAW as u32, sl),
+                        AudioSpec::new_with_layout(SAMPLE_RATE_RAW as u32, sl),
+                        MONO_FRAME_SIZE,
                     );
                 }
 
@@ -386,7 +383,7 @@ impl Mixer {
     }
 
     #[inline]
-    pub fn add_track(&mut self, track: TrackContext) -> Result<()> {
+    pub fn add_track(&mut self, track: TrackContext<'_>) -> Result<()> {
         let (track, evts, state, handle) = InternalTrack::decompose_track(track);
         self.tracks.push(track);
         self.track_handles.push(handle.clone());

@@ -25,25 +25,25 @@ pub struct MixerConnection {
     pub udp_tx: UdpSocket,
 }
 
-pub enum MixerMessage {
-    AddTrack(Box<TrackContext>),
-    SetTrack(Option<Box<TrackContext>>),
+pub enum MixerMessage<'s> {
+    AddTrack(Box<TrackContext<'s>>),
+    SetTrack(Option<Box<TrackContext<'s>>>),
 
     SetBitrate(Bitrate),
-    SetConfig(Config),
+    SetConfig(Config<'s>),
     SetMute(bool),
 
     SetConn(MixerConnection, u32),
-    Ws(Option<Sender<WsMessage>>),
+    Ws(Option<Sender<WsMessage<'s>>>),
     DropConn,
 
-    ReplaceInterconnect(Interconnect),
+    ReplaceInterconnect(Interconnect<'s>),
     RebuildEncoder,
 
     Poison,
 }
 
-impl MixerMessage {
+impl MixerMessage<'_> {
     #[must_use]
     pub fn is_mixer_maybe_live(&self) -> bool {
         matches!(

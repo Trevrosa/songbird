@@ -37,16 +37,16 @@ const DEFAULT_MIXERS_PER_THREAD: NonZeroUsize = match NonZeroUsize::new(16) {
 ///
 /// [`Config::default`]: crate::Config::default
 /// [`ScheduleMode`]: Mode
-pub fn get_default_scheduler() -> &'static Scheduler {
-    static DEFAULT_SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
+pub fn get_default_scheduler() -> &'static Scheduler<'static> {
+    static DEFAULT_SCHEDULER: OnceLock<Scheduler<'_>> = OnceLock::new();
     DEFAULT_SCHEDULER.get_or_init(Scheduler::default)
 }
 
 /// A reference to a shared group of threads used for running idle and active
 /// audio threads.
 #[derive(Clone, Debug)]
-pub struct Scheduler {
-    inner: Arc<InnerScheduler>,
+pub struct Scheduler<'s> {
+    inner: Arc<InnerScheduler<'s>>,
 }
 
 /// Inner contents of a [`Scheduler`] instance.
@@ -54,12 +54,12 @@ pub struct Scheduler {
 /// This is an `Arc` around `Arc`'d contents so that we can make use of the
 /// drop check on `Scheduler` to clean up resources.
 #[derive(Clone, Debug)]
-struct InnerScheduler {
-    tx: Sender<SchedulerMessage>,
+struct InnerScheduler<'s> {
+    tx: Sender<SchedulerMessage<'s>>,
     stats: Arc<StatBlock>,
 }
 
-impl Scheduler {
+impl Scheduler<'_> {
     /// Create a new mixer scheduler from the allocation strategy in `config`.
     #[must_use]
     pub fn new(config: Config) -> Self {
@@ -75,9 +75,9 @@ impl Scheduler {
 
     pub(crate) fn new_mixer(
         &self,
-        config: &DriverConfig,
-        ic: Interconnect,
-        rx: Receiver<MixerMessage>,
+        config: &DriverConfig<'_>,
+        ic: Interconnect<'_>,
+        rx: Receiver<MixerMessage<'_>>,
     ) {
         self.inner
             .tx
@@ -121,28 +121,28 @@ impl Scheduler {
     }
 }
 
-impl Drop for InnerScheduler {
+impl Drop for InnerScheduler<'_> {
     fn drop(&mut self) {
         _ = self.tx.send(SchedulerMessage::Kill);
     }
 }
 
-impl Default for Scheduler {
+impl Default for Scheduler<'_> {
     fn default() -> Self {
         Scheduler::new(Config::default())
     }
 }
 
 /// Control messages for a scheduler.
-pub enum SchedulerMessage {
+pub enum SchedulerMessage<'s> {
     /// Build a new `Mixer` as part of the initialisation of a `Driver`.
-    NewMixer(Receiver<MixerMessage>, Interconnect, DriverConfig),
+    NewMixer(Receiver<MixerMessage<'s>>, Interconnect<'s>, DriverConfig<'s>),
     /// Forward a command for
-    Do(TaskId, MixerMessage),
+    Do(TaskId, MixerMessage<'s>),
     /// Return a `Mixer` from a worker back to the idle pool.
-    Demote(TaskId, ParkedMixer),
+    Demote(TaskId, ParkedMixer<'s>),
     /// Move an expensive `Mixer` to another thread in the worker pool.
-    Overspill(WorkerId, TaskId, ParkedMixer),
+    Overspill(WorkerId, TaskId, ParkedMixer<'s>),
     /// Request a copy of all per-worker statistics.
     GetStats(Sender<Vec<Arc<LiveStatBlock>>>),
     /// Cleanup once all `Scheduler` handles are dropped.

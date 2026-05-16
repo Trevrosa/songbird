@@ -219,7 +219,7 @@ impl<'a> YoutubeDl<'a> {
     }
 }
 
-impl From<YoutubeDl<'static>> for Input {
+impl From<YoutubeDl<'static>> for Input<'_> {
     fn from(val: YoutubeDl<'static>) -> Self {
         Input::Lazy(Box::new(val))
     }

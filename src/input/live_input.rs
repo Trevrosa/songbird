@@ -1,12 +1,12 @@
 use super::{AudioStream, Metadata, MetadataError, Parsed};
 
 use symphonia_core::{
-    codecs::{CodecRegistry, DecoderOptions},
+    codecs::{registry::CodecRegistry, audio::AudioDecoderOptions},
     errors::Error as SymphError,
     formats::FormatOptions,
     io::{MediaSource, MediaSourceStream, MediaSourceStreamOptions},
     meta::MetadataOptions,
-    probe::{Hint, Probe},
+    formats::probe::{Hint, Probe},
 };
 
 /// An initialised audio source.
@@ -15,16 +15,16 @@ use symphonia_core::{
 /// symphonia. [`Parsed`] file streams are ready for playback.
 ///
 /// [`Parsed`]: Self::Parsed
-pub enum LiveInput {
+pub enum LiveInput<'s> {
     /// An unread, raw file stream.
     Raw(AudioStream<Box<dyn MediaSource>>),
     /// An unread file which has been wrapped with a large read-ahead buffer.
-    Wrapped(AudioStream<MediaSourceStream>),
+    Wrapped(AudioStream<MediaSourceStream<'s>>),
     /// An audio file which has had its headers parsed and decoder state built.
     Parsed(Parsed),
 }
 
-impl LiveInput {
+impl LiveInput<'_> {
     /// Converts this audio source into a [`Parsed`] object using the supplied format and codec
     /// registries.
     ///
@@ -69,14 +69,14 @@ impl LiveInput {
                 .default_track()
                 .and_then(|track| {
                     codecs
-                        .make(&track.codec_params, &DecoderOptions::default())
+                        .make(&track.codec_params, &AudioDecoderOptions::default())
                         .ok()
                         .map(|d| (d, track.id))
                 })
                 .or_else(|| {
                     format.tracks().iter().find_map(|track| {
                         codecs
-                            .make(&track.codec_params, &DecoderOptions::default())
+                            .make(&track.codec_params, &AudioDecoderOptions::default())
                             .ok()
                             .map(|d| (d, track.id))
                     })

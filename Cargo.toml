@@ -54,8 +54,8 @@ serenity-voice-model = { optional = true, version = "0.3" }
 socket2 = { optional = true, version = "0.5" }
 streamcatcher = { optional = true, version = "1" }
 stream_lib = { default-features = false, optional = true, version = "0.5.2" }
-symphonia = { default-features = false, optional = true, version = "0.5.2" }
-symphonia-core = { optional = true, version = "0.5.2" }
+symphonia = { default-features = false, optional = true, version = "0.6.0" }
+symphonia-core = { optional = true, version = "0.6.0" }
 tokio = { default-features = false, optional = true, version = "1.0" }
 tokio-tungstenite = { optional = true, version = "0.26", features = ["url"] }
 tokio-websockets = { optional = true, version = "0.11", features = [
@@ -79,7 +79,7 @@ enum-map = "2.7.3"
 byteorder = "1"
 criterion = "0.5"
 ntest = "0.9"
-symphonia = { version = "0.5.2", features = ["aac", "isomp4", "mp3"] }
+symphonia = { version = "0.6.0", features = ["aac", "isomp4", "mp3"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "test-util"] }
 
 [features]

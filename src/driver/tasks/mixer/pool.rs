@@ -31,9 +31,9 @@ impl BlockyTaskPool {
     pub fn create(
         &self,
         callback: Sender<MixerInputResultMessage>,
-        input: Input,
+        input: Input<'_>,
         seek_time: Option<SeekTo>,
-        config: Arc<Config>,
+        config: Arc<Config<'_>>,
     ) {
         // Moves an Input from Lazy -> Live.
         // We either do this on this pool, or move it to the tokio executor as the source requires.
@@ -65,7 +65,7 @@ impl BlockyTaskPool {
         rec: Box<dyn Compose>,
         callback: Sender<MixerInputResultMessage>,
         seek_time: Option<SeekTo>,
-        config: Arc<Config>,
+        config: Arc<Config<'_>>,
     ) {
         match create_res {
             Ok(o) => {
@@ -79,9 +79,9 @@ impl BlockyTaskPool {
 
     pub fn parse(
         &self,
-        config: Arc<Config>,
+        config: Arc<Config<'_>>,
         callback: Sender<MixerInputResultMessage>,
-        input: LiveInput,
+        input: LiveInput<'_>,
         rec: Option<Box<dyn Compose>>,
         seek_time: Option<SeekTo>,
     ) {
@@ -117,7 +117,7 @@ impl BlockyTaskPool {
         // Not all of symphonia's formats bother to return SeekErrorKind::ForwardOnly.
         // So, we need *this* flag.
         backseek_needed: bool,
-        config: Arc<Config>,
+        config: Arc<Config<'_>>,
     ) {
         let pool_clone = self.clone();
 
